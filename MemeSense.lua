@@ -1,5 +1,5 @@
 -- ==========================================
--- MEMESENSE MM2 | FULL EDITION v4
+-- MEMESENSE MM2 | FULL EDITION v5 (Anti-Aim)
 -- ==========================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -19,35 +19,56 @@ end)
 
 -- ===== CONFIG =====
 local Config = {
+    -- Aimbot
     AimEnabled = false, AimRadius = 100, AimSmoothness = 1,
     AimBind = "MouseButton2", AimTargetMode = "Head",
     AimVisibleOnly = false, AimPrediction = false, ShowFOV = true,
 
+    -- Trigger
     TriggerBot = false, TriggerBind = "T",
     TriggerDelay = 50, TriggerOnlyMurderer = true,
 
+    -- ESP
     EspPlayers = false, EspBoxes = true, EspNames = true,
     EspHealth = true, EspDistance = false, EspRoles = true,
     EspGun = false, ShowClanTags = true, ShowOwnTag = true,
 
+    -- Combat
     KillAura = false, KillAuraBind = "F", AuraRadius = 15,
     AutoShoot = false, AutoShootBind = "G",
     AutoGrabGun = false, AutoGrabBind = "H",
     SilentAim = false,
     FlingTarget = "", FlingMurderer = false, FlingBind = "V",
 
+    -- Weapon
     NoRecoil = false, NoSpread = false, InstantReload = false,
 
+    -- Movement
     WalkSpeed = 16, JumpPower = 50,
     InfiniteJump = false, InfJumpBind = "None",
     AntiFling = true, FastBHop = false, BHopBind = "Space",
     WallHop = false, NoClip = false, NoClipBind = "N",
 
-    StretchedResolution = 70, FullBright = false,
-    RemoveFog = false,
+    -- Visuals
+    StretchedResolution = 70, FullBright = false, RemoveFog = false,
+
+    -- ===== ANTI-AIM =====
+    AntiAimEnabled = false,
+    AntiAimBind = "None",
+    AntiAimPitch = "None",       -- None / Up / Down / Zero
+    AntiAimYaw = "Static",       -- Static / Backwards / Spin / Jitter / Random / Sideways
+    AntiAimYawOffset = 0,        -- в градусах
+    AntiAimSpinSpeed = 15,
+    AntiAimDesync = false,       -- визуальный десинк (нижняя часть в одну сторону, верх в другую)
+    AntiAimDesyncAngle = 60,
+    AntiAimFakeLag = false,      -- прерывистое обновление
+    AntiAimFakeLagInterval = 3,
+    AntiAimSlowWalk = false,     -- медленная ходьба
+    AntiAimAtTargets = false,    -- смотреть НА врагов (ломает aim-логику)
+    AntiAimShowIndicator = true,
 
     -- Панические бинды
-    PanicBind = "End", -- отключает всё
+    PanicBind = "End",
     MenuBind = "Insert",
 }
 
@@ -75,15 +96,14 @@ end
 local function SaveConfig(name)
     if not name or name == "" then return false end
     local path = ConfigFolder .. "/" .. name .. ".json"
-    local ok = pcall(function()
+    return pcall(function()
         if writefile then writefile(path, HttpService:JSONEncode(Config)) end
     end)
-    return ok
 end
 
 local function LoadConfig(name)
     local path = ConfigFolder .. "/" .. name .. ".json"
-    local ok = pcall(function()
+    return pcall(function()
         if isfile and isfile(path) then
             local data = HttpService:JSONDecode(readfile(path))
             if type(data) == "table" then
@@ -91,7 +111,6 @@ local function LoadConfig(name)
             end
         end
     end)
-    return ok
 end
 
 local function DeleteConfig(name)
@@ -101,7 +120,7 @@ local function DeleteConfig(name)
     end)
 end
 
--- ===== TAG SYSTEM =====
+-- ===== TAG =====
 local function giveTagMarker()
     local bp = LocalPlayer:FindFirstChild("Backpack")
     if not bp or bp:FindFirstChild("MemeSense_Tag") then return end
@@ -114,10 +133,7 @@ end
 
 local function removeTagMarker()
     local bp = LocalPlayer:FindFirstChild("Backpack")
-    if bp then
-        local m = bp:FindFirstChild("MemeSense_Tag")
-        if m then m:Destroy() end
-    end
+    if bp then local m = bp:FindFirstChild("MemeSense_Tag"); if m then m:Destroy() end end
     if LocalPlayer.Character then
         local m = LocalPlayer.Character:FindFirstChild("MemeSense_Tag")
         if m then m:Destroy() end
@@ -127,8 +143,7 @@ end
 local function createTagGui(character)
     if not character then return end
     local head = character:FindFirstChild("Head")
-    if not head then return end
-    if head:FindFirstChild("MemeSense_ClanTag") then return end
+    if not head or head:FindFirstChild("MemeSense_ClanTag") then return end
 
     local bg = Instance.new("BillboardGui")
     bg.Name = "MemeSense_ClanTag"
@@ -154,10 +169,7 @@ end
 local function removeTagGui(character)
     if not character then return end
     local head = character:FindFirstChild("Head")
-    if head then
-        local t = head:FindFirstChild("MemeSense_ClanTag")
-        if t then t:Destroy() end
-    end
+    if head then local t = head:FindFirstChild("MemeSense_ClanTag"); if t then t:Destroy() end end
 end
 
 giveTagMarker()
@@ -169,7 +181,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if Config.ShowOwnTag then createTagGui(char) end
 end)
 
--- Проверяем чужие теги
 local function checkOtherTags()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
@@ -232,7 +243,6 @@ topBar.BackgroundColor3 = Color3.fromRGB(235, 50, 75)
 topBar.BorderSizePixel = 0
 topBar.Parent = mainFrame
 
--- Close & Min
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 28, 0, 22)
 closeBtn.Position = UDim2.new(1, -32, 0, 6)
@@ -263,11 +273,12 @@ closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRG
 closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30); closeBtn.TextColor3 = Color3.fromRGB(235,50,75) end)
 
 local UNLOADED = false
-local unloadCheat -- forward
+local unloadCheat
 unloadCheat = function()
     UNLOADED = true
     pcall(function() screenGui:Destroy() end)
     pcall(function() if CoreGui:FindFirstChild("MemeESP") then CoreGui.MemeESP:Destroy() end end)
+    pcall(function() if CoreGui:FindFirstChild("AntiAim_HUD") then CoreGui.AntiAim_HUD:Destroy() end end)
     for _, p in pairs(Players:GetPlayers()) do
         if p.Character then removeTagGui(p.Character) end
     end
@@ -323,6 +334,7 @@ end)
 
 -- ===== UI LIB =====
 local UI = {}
+local allCheckboxes, allSliders, allBinds, allDropdowns = {}, {}, {}, {}
 
 function UI:CreateSection(parent, name, size, pos)
     local section = Instance.new("Frame")
@@ -371,8 +383,6 @@ function UI:CreateSection(parent, name, size, pos)
     return content
 end
 
-local allCheckboxes = {} -- для обновления UI при загрузке конфига
-
 function UI:CreateCheckbox(parent, text, varName)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -6, 0, 18)
@@ -407,7 +417,6 @@ function UI:CreateCheckbox(parent, text, varName)
     allCheckboxes[varName] = box
 end
 
-local allSliders = {}
 function UI:CreateSlider(parent, text, min, max, varName)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -6, 0, 30)
@@ -480,7 +489,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
-local allBinds = {}
 function UI:CreateBindButton(parent, text, varName)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -6, 0, 20)
@@ -516,10 +524,8 @@ function UI:CreateBindButton(parent, text, varName)
             btn.Text = key
         end
     end)
-
     btn.MouseButton2Click:Connect(function()
-        Config[varName] = "None"
-        btn.Text = "None"
+        Config[varName] = "None"; btn.Text = "None"
     end)
 
     allBinds[varName] = btn
@@ -562,6 +568,8 @@ function UI:CreateDropdown(parent, text, options, varName)
         Config[varName] = options[idx]
         btn.Text = options[idx]
     end)
+
+    allDropdowns[varName] = {btn = btn, opts = options}
 end
 
 function UI:CreateInput(parent, text, varName)
@@ -608,7 +616,6 @@ function UI:CreateButton(parent, text, callback)
     return btn
 end
 
--- ===== ФУНКЦИЯ ОБНОВЛЕНИЯ UI (для конфигов) =====
 local function refreshUI()
     for varName, box in pairs(allCheckboxes) do
         if Config[varName] ~= nil then
@@ -624,16 +631,19 @@ local function refreshUI()
     for varName, btn in pairs(allBinds) do
         if Config[varName] ~= nil then btn.Text = Config[varName] end
     end
+    for varName, data in pairs(allDropdowns) do
+        if Config[varName] ~= nil then data.btn.Text = Config[varName] end
+    end
 end
 
 -- ===== TABS =====
-local tabs = {"Legitbot", "Ragebot", "Visuals", "Movement", "MM2 Exploit", "Configs", "Misc"}
+local tabs = {"Legitbot", "Ragebot", "Anti-Aim", "Visuals", "Movement", "MM2 Exploit", "Configs", "Misc"}
 local activePage, activeTabBtn, activeIndicator
 
 for i, tName in ipairs(tabs) do
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 28)
-    btn.Position = UDim2.new(0, 0, 0, 55 + (i-1)*28)
+    btn.Size = UDim2.new(1, 0, 0, 26)
+    btn.Position = UDim2.new(0, 0, 0, 55 + (i-1)*26)
     btn.BackgroundTransparency = 1
     btn.Text = "  " .. tName
     btn.TextColor3 = i == 1 and Color3.fromRGB(235, 50, 75) or Color3.fromRGB(135, 135, 135)
@@ -677,7 +687,6 @@ for i, tName in ipairs(tabs) do
         UI:CreateSlider(s1, "FOV Radius", 10, 400, "AimRadius")
         UI:CreateSlider(s1, "Smoothness", 1, 20, "AimSmoothness")
         UI:CreateDropdown(s1, "Target", {"Head", "Torso", "Gun"}, "AimTargetMode")
-        UI:CreateCheckbox(s1, "Visible Only", "AimVisibleOnly")
         UI:CreateCheckbox(s1, "Prediction", "AimPrediction")
         UI:CreateCheckbox(s1, "Show FOV Circle", "ShowFOV")
 
@@ -708,6 +717,26 @@ for i, tName in ipairs(tabs) do
         local s4 = UI:CreateSection(page, "Auto Pickup", UDim2.new(0, 245, 0, 90), UDim2.new(0, 260, 0, 145))
         UI:CreateCheckbox(s4, "Auto Grab Dropped Gun", "AutoGrabGun")
         UI:CreateBindButton(s4, "AutoGrab Key", "AutoGrabBind")
+
+    elseif tName == "Anti-Aim" then
+        local s1 = UI:CreateSection(page, "Core", UDim2.new(0, 245, 0, 130), UDim2.new(0, 5, 0, 5))
+        UI:CreateCheckbox(s1, "Enable Anti-Aim", "AntiAimEnabled")
+        UI:CreateBindButton(s1, "AntiAim Key", "AntiAimBind")
+        UI:CreateCheckbox(s1, "Show HUD Indicator", "AntiAimShowIndicator")
+        UI:CreateCheckbox(s1, "Slow Walk", "AntiAimSlowWalk")
+
+        local s2 = UI:CreateSection(page, "Angles", UDim2.new(0, 245, 0, 180), UDim2.new(0, 260, 0, 5))
+        UI:CreateDropdown(s2, "Pitch", {"None", "Up", "Down", "Zero"}, "AntiAimPitch")
+        UI:CreateDropdown(s2, "Yaw", {"Static", "Backwards", "Spin", "Jitter", "Random", "Sideways"}, "AntiAimYaw")
+        UI:CreateSlider(s2, "Yaw Offset", -180, 180, "AntiAimYawOffset")
+        UI:CreateSlider(s2, "Spin Speed", 1, 50, "AntiAimSpinSpeed")
+
+        local s3 = UI:CreateSection(page, "Advanced", UDim2.new(0, 500, 0, 140), UDim2.new(0, 5, 0, 140))
+        UI:CreateCheckbox(s3, "Desync (Legs vs Body)", "AntiAimDesync")
+        UI:CreateSlider(s3, "Desync Angle", 0, 180, "AntiAimDesyncAngle")
+        UI:CreateCheckbox(s3, "Fake Lag (choke ticks)", "AntiAimFakeLag")
+        UI:CreateSlider(s3, "Fake Lag Interval", 1, 10, "AntiAimFakeLagInterval")
+        UI:CreateCheckbox(s3, "Look At Enemies (break aimbot)", "AntiAimAtTargets")
 
     elseif tName == "Visuals" then
         local s1 = UI:CreateSection(page, "ESP", UDim2.new(0, 245, 0, 175), UDim2.new(0, 5, 0, 5))
@@ -841,8 +870,7 @@ for i, tName in ipairs(tabs) do
         end)
         UI:CreateButton(actSec, "Delete Config", function()
             local n = nameInput.Text ~= "" and nameInput.Text or CurrentConfigName
-            DeleteConfig(n)
-            refreshList()
+            DeleteConfig(n); refreshList()
         end)
         UI:CreateButton(actSec, "Refresh List", refreshList)
 
@@ -854,7 +882,7 @@ for i, tName in ipairs(tabs) do
         info.Size = UDim2.new(1, -6, 0, 55)
         info.BackgroundTransparency = 1
         info.RichText = true
-        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2 v4</font>\nПКМ по кнопке-бинду = сбросить бинд"
+        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2 v5</font> | Anti-Aim added\nПКМ по бинду = сбросить"
         info.TextColor3 = Color3.fromRGB(180, 180, 180)
         info.Font = Enum.Font.Gotham
         info.TextSize = 12
@@ -880,6 +908,25 @@ for i, tName in ipairs(tabs) do
     end
 end
 
+-- ===== ANTI-AIM HUD =====
+local aaHud = Instance.new("ScreenGui")
+aaHud.Name = "AntiAim_HUD"
+aaHud.ResetOnSpawn = false
+aaHud.Parent = CoreGui
+
+local aaLabel = Instance.new("TextLabel")
+aaLabel.Size = UDim2.new(0, 200, 0, 22)
+aaLabel.Position = UDim2.new(0.5, -100, 1, -60)
+aaLabel.BackgroundTransparency = 1
+aaLabel.RichText = true
+aaLabel.Text = ""
+aaLabel.Font = Enum.Font.GothamBold
+aaLabel.TextSize = 14
+aaLabel.TextStrokeTransparency = 0
+aaLabel.TextStrokeColor3 = Color3.new(0,0,0)
+aaLabel.Visible = false
+aaLabel.Parent = aaHud
+
 -- ===== FOV CIRCLE =====
 local FOVCircle
 if Drawing then
@@ -903,7 +950,6 @@ local EspFolder = Instance.new("Folder")
 EspFolder.Name = "MemeESP"
 EspFolder.Parent = CoreGui
 
--- ===== BIND CHECK =====
 local function isBindPressed(bindStr)
     if not bindStr or bindStr == "None" then return false end
     if bindStr:find("MouseButton") then
@@ -917,25 +963,21 @@ local function isBindPressed(bindStr)
     return false
 end
 
--- ===== TOGGLE BINDS (одноразовое нажатие) =====
+-- ===== TOGGLE BINDS =====
 UserInputService.InputBegan:Connect(function(input, gp)
-    if UNLOADED or gp then return end
-    if currentBindCallback then return end
-
+    if UNLOADED or gp or currentBindCallback then return end
     local key = input.KeyCode ~= Enum.KeyCode.Unknown and input.KeyCode.Name or input.UserInputType.Name
 
-    if key == Config.MenuBind then
-        mainFrame.Visible = not mainFrame.Visible
-    end
+    if key == Config.MenuBind then mainFrame.Visible = not mainFrame.Visible end
     if key == Config.PanicBind then
-        Config.AimEnabled = false
-        Config.TriggerBot = false
-        Config.KillAura = false
-        Config.AutoShoot = false
-        Config.EspPlayers = false
-        Config.FlingMurderer = false
-        Config.NoClip = false
+        Config.AimEnabled = false; Config.TriggerBot = false
+        Config.KillAura = false; Config.AutoShoot = false
+        Config.EspPlayers = false; Config.FlingMurderer = false
+        Config.NoClip = false; Config.AntiAimEnabled = false
         refreshUI()
+    end
+    if key == Config.AntiAimBind and Config.AntiAimBind ~= "None" then
+        Config.AntiAimEnabled = not Config.AntiAimEnabled; refreshUI()
     end
     if key == Config.KillAuraBind and Config.KillAuraBind ~= "None" then
         Config.KillAura = not Config.KillAura; refreshUI()
@@ -955,7 +997,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- ===== TRIGGER =====
 local lastTrigger = 0
 local function tryTrigger()
     if tick() - lastTrigger < Config.TriggerDelay/1000 then return end
@@ -975,8 +1016,6 @@ local function tryTrigger()
 end
 
 -- ===== NO RECOIL / NO SPREAD =====
--- Хук на камеру для отмены отдачи
-local recoilHook
 task.spawn(function()
     while not UNLOADED do
         if Config.NoRecoil or Config.NoSpread then
@@ -987,12 +1026,8 @@ task.spawn(function()
                     for _, v in pairs(gun:GetDescendants()) do
                         if v:IsA("NumberValue") or v:IsA("IntValue") then
                             local n = v.Name:lower()
-                            if Config.NoRecoil and (n:find("recoil") or n:find("kick")) then
-                                pcall(function() v.Value = 0 end)
-                            end
-                            if Config.NoSpread and (n:find("spread") or n:find("accuracy") or n:find("bloom")) then
-                                pcall(function() v.Value = 0 end)
-                            end
+                            if Config.NoRecoil and (n:find("recoil") or n:find("kick")) then pcall(function() v.Value = 0 end) end
+                            if Config.NoSpread and (n:find("spread") or n:find("accuracy") or n:find("bloom")) then pcall(function() v.Value = 0 end) end
                         end
                     end
                 end
@@ -1002,19 +1037,138 @@ task.spawn(function()
     end
 end)
 
--- Периодическая проверка тегов
 task.spawn(function()
     while not UNLOADED do
         pcall(checkOtherTags)
         pcall(function()
-            if Config.ShowOwnTag and LocalPlayer.Character then
-                createTagGui(LocalPlayer.Character)
-            elseif not Config.ShowOwnTag and LocalPlayer.Character then
-                removeTagGui(LocalPlayer.Character)
-            end
+            if Config.ShowOwnTag and LocalPlayer.Character then createTagGui(LocalPlayer.Character)
+            elseif not Config.ShowOwnTag and LocalPlayer.Character then removeTagGui(LocalPlayer.Character) end
             giveTagMarker()
         end)
         task.wait(1)
+    end
+end)
+
+-- ============================================================
+-- ===== ANTI-AIM ENGINE =====
+-- ============================================================
+local aaFrame = 0
+local aaLagCounter = 0
+local originalWalkSpeed = 16
+local aaLastCFrame = nil
+
+RunService.Heartbeat:Connect(function(dt)
+    if UNLOADED or not Config.AntiAimEnabled then
+        aaLabel.Visible = false
+        return
+    end
+
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+
+    aaFrame += 1
+
+    -- FakeLag (choke) — обновляем позицию только каждые N тиков
+    if Config.AntiAimFakeLag then
+        aaLagCounter += 1
+        if aaLagCounter < Config.AntiAimFakeLagInterval then
+            if aaLastCFrame then
+                pcall(function() hrp.CFrame = aaLastCFrame end)
+            end
+            return
+        else
+            aaLagCounter = 0
+        end
+    end
+
+    -- Slow Walk
+    if Config.AntiAimSlowWalk then
+        hum.WalkSpeed = math.min(hum.WalkSpeed, 8)
+    end
+
+    -- Yaw
+    local yaw = 0
+    if Config.AntiAimYaw == "Static" then
+        yaw = Config.AntiAimYawOffset
+    elseif Config.AntiAimYaw == "Backwards" then
+        yaw = 180 + Config.AntiAimYawOffset
+    elseif Config.AntiAimYaw == "Sideways" then
+        yaw = 90 + Config.AntiAimYawOffset
+    elseif Config.AntiAimYaw == "Spin" then
+        yaw = (aaFrame * Config.AntiAimSpinSpeed) % 360
+    elseif Config.AntiAimYaw == "Jitter" then
+        yaw = (aaFrame % 2 == 0) and (Config.AntiAimYawOffset + 90) or (Config.AntiAimYawOffset - 90)
+    elseif Config.AntiAimYaw == "Random" then
+        yaw = math.random(-180, 180)
+    end
+
+    -- LookAtEnemies — если врагов близко, поворачиваемся ЛИЦОМ на них
+    if Config.AntiAimAtTargets then
+        local closest, minDist = nil, 40
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local ehrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if ehrp then
+                    local d = (hrp.Position - ehrp.Position).Magnitude
+                    if d < minDist then closest = ehrp; minDist = d end
+                end
+            end
+        end
+        if closest then
+            local dir = (closest.Position - hrp.Position)
+            local lookYaw = math.deg(math.atan2(-dir.X, -dir.Z))
+            yaw = lookYaw
+        end
+    end
+
+    -- Pitch
+    local pitch = 0
+    if Config.AntiAimPitch == "Up" then pitch = -89
+    elseif Config.AntiAimPitch == "Down" then pitch = 89
+    elseif Config.AntiAimPitch == "Zero" then pitch = 0 end
+
+    -- Собираем поворот
+    local yawRad = math.rad(yaw)
+    local pitchRad = math.rad(pitch)
+
+    -- Применяем поворот к HumanoidRootPart (визуально для других)
+    local pos = hrp.Position
+    local newCFrame = CFrame.new(pos) * CFrame.Angles(0, yawRad, 0) * CFrame.Angles(pitchRad, 0, 0)
+
+    -- Desync — верх туда, "ноги" (HRP) в другую сторону
+    if Config.AntiAimDesync then
+        local desyncRad = math.rad(Config.AntiAimDesyncAngle)
+        newCFrame = CFrame.new(pos) * CFrame.Angles(0, yawRad + desyncRad, 0) * CFrame.Angles(pitchRad, 0, 0)
+
+        -- Крутим верхнюю часть в противоположную (визуально)
+        local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+        if torso then
+            pcall(function()
+                torso.CFrame = torso.CFrame * CFrame.Angles(0, -desyncRad * 2, 0)
+            end)
+        end
+    end
+
+    pcall(function() hrp.CFrame = newCFrame end)
+    aaLastCFrame = newCFrame
+
+    -- HUD
+    if Config.AntiAimShowIndicator then
+        local mode = Config.AntiAimYaw
+        if Config.AntiAimAtTargets then mode = "LookAt" end
+        aaLabel.Text = string.format(
+            '<font color="rgb(235,50,75)">AA</font> <font color="rgb(255,255,255)">| %s | pitch: %s%s%s</font>',
+            mode,
+            Config.AntiAimPitch,
+            Config.AntiAimDesync and " | DESYNC" or "",
+            Config.AntiAimFakeLag and " | LAG" or ""
+        )
+        aaLabel.Visible = true
+    else
+        aaLabel.Visible = false
     end
 end)
 
@@ -1029,7 +1183,7 @@ RunService.RenderStepped:Connect(function()
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    hum.WalkSpeed = Config.WalkSpeed
+    if not Config.AntiAimSlowWalk then hum.WalkSpeed = Config.WalkSpeed end
     hum.JumpPower = Config.JumpPower
     Camera.FieldOfView = Config.StretchedResolution
 
@@ -1040,13 +1194,10 @@ RunService.RenderStepped:Connect(function()
     end
     if Config.RemoveFog then Lighting.FogEnd = 100000 end
 
-    -- InfJump
-    local infJumpKey = Config.InfJumpBind ~= "None" and isBindPressed(Config.InfJumpBind) or false
-    if Config.InfiniteJump and (UserInputService:IsKeyDown(Enum.KeyCode.Space) or infJumpKey) then
+    if Config.InfiniteJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 
-    -- BHop
     if Config.FastBHop and isBindPressed(Config.BHopBind) and hum.MoveDirection.Magnitude > 0 then
         hum.Jump = true
         hrp.CFrame += hum.MoveDirection * 0.15
@@ -1080,7 +1231,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- ESP
     if Config.EspPlayers then
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -1205,7 +1355,6 @@ RunService.RenderStepped:Connect(function()
                 if not (Config.AimTargetMode == "Gun" and role ~= "Sheriff") then
                     local aimPart = p.Character:FindFirstChild("Head")
                     if Config.AimTargetMode == "Torso" then aimPart = p.Character:FindFirstChild("HumanoidRootPart") or aimPart end
-
                     if aimPart then
                         local aimPos = aimPart.Position
                         if Config.AimPrediction then
@@ -1229,4 +1378,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ MemeSense v4 LOADED | INSERT | END = panic | Configs restored | Binds on everything")
+print("✅ MemeSense v5 LOADED | Anti-Aim available | INSERT | END = panic")
