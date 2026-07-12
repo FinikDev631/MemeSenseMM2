@@ -1,6 +1,5 @@
 -- ==========================================
--- MEMESENSE MM2 | FULL EDITION
--- Всё на твой страх и риск
+-- MEMESENSE MM2 | FULL EDITION v3
 -- ==========================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -8,83 +7,116 @@ local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 pcall(function()
-    if CoreGui:FindFirstChild("MemeSense_UI") then
-        CoreGui.MemeSense_UI:Destroy()
-    end
+    if CoreGui:FindFirstChild("MemeSense_UI") then CoreGui.MemeSense_UI:Destroy() end
+    if CoreGui:FindFirstChild("MemeESP") then CoreGui.MemeESP:Destroy() end
 end)
 
 -- ===== CONFIG =====
 local Config = {
-    -- Aimbot
-    AimEnabled = false,
-    AimRadius = 100,
-    AimSmoothness = 1,
-    AimBind = "MouseButton2",
-    AimTargetMode = "Head",
-    AimTeamCheck = false,
-    AimVisibleOnly = false,
-    AimPrediction = false,
+    AimEnabled = false, AimRadius = 100, AimSmoothness = 1,
+    AimBind = "MouseButton2", AimTargetMode = "Head",
+    AimTeamCheck = false, AimVisibleOnly = false, AimPrediction = false,
     ShowFOV = true,
-    FOVColor = Color3.fromRGB(235, 50, 75),
 
-    -- Triggerbot
-    TriggerBot = false,
-    TriggerBind = "T",
-    TriggerDelay = 50,
-    TriggerOnlyMurderer = true,
+    TriggerBot = false, TriggerBind = "T",
+    TriggerDelay = 50, TriggerOnlyMurderer = true,
 
-    -- ESP
-    EspPlayers = false,
-    EspBoxes = true,
-    EspNames = true,
-    EspHealth = true,
-    EspDistance = false,
-    EspTracers = false,
-    EspRoles = true,
-    EspGun = false,
-    ShowClanTags = true,
+    EspPlayers = false, EspBoxes = true, EspNames = true,
+    EspHealth = true, EspDistance = false, EspTracers = false,
+    EspRoles = true, EspGun = false, ShowClanTags = true,
+    ShowOwnTag = true,
 
-    -- Combat
-    KillAura = false,
-    AuraRadius = 15,
-    AutoShoot = false,
-    AutoGrabGun = false,
-    SilentAim = false,
-    FlingTarget = "",
-    FlingMurderer = false,
+    KillAura = false, AuraRadius = 15,
+    AutoShoot = false, AutoGrabGun = false, SilentAim = false,
+    FlingTarget = "", FlingMurderer = false,
 
-    -- Movement
-    WalkSpeed = 16,
-    JumpPower = 50,
-    InfiniteJump = false,
-    AntiFling = true,
-    FastBHop = false,
-    WallHop = false,
-    NoClip = false,
+    WalkSpeed = 16, JumpPower = 50, InfiniteJump = false,
+    AntiFling = true, FastBHop = false, WallHop = false, NoClip = false,
 
-    -- Visuals
-    StretchedResolution = 70,
-    FullBright = false,
-    RemoveFog = false,
-    ThirdPerson = false,
+    StretchedResolution = 70, FullBright = false,
+    RemoveFog = false, ThirdPerson = false,
 }
 
--- ===== TAG TOOL =====
-local function giveTagTool()
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if not backpack or backpack:FindFirstChild("MemeSense_Tag") then return end
-    local tool = Instance.new("Tool")
-    tool.Name = "MemeSense_Tag"
-    tool.RequiresHandle = false
-    tool.CanBeDropped = false
-    tool.Parent = backpack
+-- ============================================================
+-- ===== КЛАНТЕГ (BillboardGui над головой) =====
+-- ============================================================
+local TagContainer = Instance.new("Folder")
+TagContainer.Name = "MemeSense_Tags"
+TagContainer.Parent = CoreGui
+
+local function createTagGui(character)
+    if not character then return end
+    local head = character:FindFirstChild("Head") or character:WaitForChild("Head", 3)
+    if not head then return end
+
+    -- Удаляем старый если есть
+    local old = head:FindFirstChild("MemeSense_ClanTag")
+    if old then old:Destroy() end
+
+    local bg = Instance.new("BillboardGui")
+    bg.Name = "MemeSense_ClanTag"
+    bg.Adornee = head
+    bg.Size = UDim2.new(0, 200, 0, 30)
+    bg.StudsOffset = Vector3.new(0, 3, 0)
+    bg.AlwaysOnTop = true
+    bg.LightInfluence = 0
+    bg.Parent = head
+
+    local tag = Instance.new("TextLabel")
+    tag.Size = UDim2.new(1, 0, 1, 0)
+    tag.BackgroundTransparency = 1
+    tag.RichText = true
+    tag.Text = '<font color="rgb(235,50,75)">★ </font><font color="rgb(255,255,255)">Meme</font><font color="rgb(235,50,75)">Sense</font><font color="rgb(235,50,75)"> ★</font>'
+    tag.Font = Enum.Font.GothamBold
+    tag.TextSize = 16
+    tag.TextStrokeTransparency = 0
+    tag.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    tag.Parent = bg
+
+    -- Также добавляем "маркер" — Tool в бэкпак, чтобы другие пользователи скрипта видели тег
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if bp and not bp:FindFirstChild("MemeSense_Tag") then
+        local tool = Instance.new("Tool")
+        tool.Name = "MemeSense_Tag"
+        tool.RequiresHandle = false
+        tool.CanBeDropped = false
+        tool.Parent = bp
+    end
 end
-giveTagTool()
-LocalPlayer.CharacterAdded:Connect(function() task.wait(1) giveTagTool() end)
+
+-- Даём тег себе при спавне
+local function applyOwnTag()
+    if not Config.ShowOwnTag then return end
+    if LocalPlayer.Character then createTagGui(LocalPlayer.Character) end
+end
+
+applyOwnTag()
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    if Config.ShowOwnTag then createTagGui(char) end
+end)
+
+-- Даём тег другим пользователям скрипта (у которых есть MemeSense_Tag в бэкпаке)
+local function checkOtherTags()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local bp = p:FindFirstChild("Backpack")
+            local hasMarker = (bp and bp:FindFirstChild("MemeSense_Tag")) or p.Character:FindFirstChild("MemeSense_Tag")
+            local head = p.Character:FindFirstChild("Head")
+            if hasMarker and Config.ShowClanTags and head and not head:FindFirstChild("MemeSense_ClanTag") then
+                createTagGui(p.Character)
+            elseif not hasMarker and head then
+                local t = head:FindFirstChild("MemeSense_ClanTag")
+                if t then t:Destroy() end
+            end
+        end
+    end
+end
 
 -- ===== FLING =====
 local function FlingPlayer(targetChar)
@@ -135,6 +167,72 @@ topBar.BackgroundColor3 = Color3.fromRGB(235, 50, 75)
 topBar.BorderSizePixel = 0
 topBar.Parent = mainFrame
 
+-- ==== КНОПКА ВЫХОДА ====
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 28, 0, 22)
+closeBtn.Position = UDim2.new(1, -32, 0, 6)
+closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+closeBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(235, 50, 75)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 10
+closeBtn.Parent = mainFrame
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 28, 0, 22)
+minBtn.Position = UDim2.new(1, -64, 0, 6)
+minBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+minBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
+minBtn.Text = "—"
+minBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 14
+minBtn.AutoButtonColor = false
+minBtn.ZIndex = 10
+minBtn.Parent = mainFrame
+
+closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(235,50,75); closeBtn.TextColor3 = Color3.fromRGB(255,255,255) end)
+closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30); closeBtn.TextColor3 = Color3.fromRGB(235,50,75) end)
+
+-- Флаг для отключения всего
+local UNLOADED = false
+local function unloadCheat()
+    UNLOADED = true
+    pcall(function() screenGui:Destroy() end)
+    pcall(function() TagContainer:Destroy() end)
+    pcall(function() if CoreGui:FindFirstChild("MemeESP") then CoreGui.MemeESP:Destroy() end end)
+
+    -- Убираем теги
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            if head then
+                local t = head:FindFirstChild("MemeSense_ClanTag")
+                if t then t:Destroy() end
+            end
+        end
+    end
+    -- Убираем маркер-тул
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if bp then
+        local m = bp:FindFirstChild("MemeSense_Tag")
+        if m then m:Destroy() end
+    end
+    -- Сброс камеры
+    Camera.FieldOfView = 70
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = 16
+        LocalPlayer.Character:FindFirstChildOfClass("Humanoid").JumpPower = 50
+    end
+    print("[MemeSense] Unloaded successfully")
+end
+
+closeBtn.MouseButton1Click:Connect(unloadCheat)
+minBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
+
 local sideBar = Instance.new("Frame")
 sideBar.Size = UDim2.new(0, 150, 1, -2)
 sideBar.Position = UDim2.new(0, 0, 0, 2)
@@ -152,13 +250,14 @@ logo.TextSize = 18
 logo.Parent = sideBar
 
 local pagesContainer = Instance.new("Frame")
-pagesContainer.Size = UDim2.new(1, -160, 1, -20)
-pagesContainer.Position = UDim2.new(0, 155, 0, 12)
+pagesContainer.Size = UDim2.new(1, -160, 1, -35)
+pagesContainer.Position = UDim2.new(0, 155, 0, 30)
 pagesContainer.BackgroundTransparency = 1
 pagesContainer.Parent = mainFrame
 
--- Toggle
+-- Toggle Insert
 UserInputService.InputBegan:Connect(function(input)
+    if UNLOADED then return end
     if input.KeyCode == Enum.KeyCode.Insert then
         mainFrame.Visible = not mainFrame.Visible
     end
@@ -168,9 +267,7 @@ end)
 local dragging, dragStart, startPos
 mainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
+        dragging = true; dragStart = input.Position; startPos = mainFrame.Position
     end
 end)
 mainFrame.InputEnded:Connect(function(input)
@@ -188,11 +285,9 @@ local UI = {}
 
 function UI:CreateSection(parent, name, size, pos)
     local section = Instance.new("Frame")
-    section.Size = size
-    section.Position = pos
+    section.Size = size; section.Position = pos
     section.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
     section.BorderColor3 = Color3.fromRGB(28, 28, 28)
-    section.BorderSizePixel = 1
     section.Parent = parent
 
     local title = Instance.new("TextLabel")
@@ -309,8 +404,8 @@ function UI:CreateSlider(parent, text, min, max, varName)
     end)
     UserInputService.InputChanged:Connect(function(input)
         if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local mousePos = UserInputService:GetMouseLocation()
-            local percent = math.clamp((mousePos.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+            local mp = UserInputService:GetMouseLocation()
+            local percent = math.clamp((mp.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
             fill.Size = UDim2.new(percent, 0, 1, 0)
             local res = math.floor(min + (max - min) * percent)
             val.Text = tostring(res)
@@ -319,7 +414,6 @@ function UI:CreateSlider(parent, text, min, max, varName)
     end)
 end
 
--- Bind
 local currentBindCallback = nil
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
@@ -433,9 +527,7 @@ function UI:CreateInput(parent, text, varName)
     box.TextSize = 10
     box.Parent = frame
 
-    box.FocusLost:Connect(function()
-        Config[varName] = box.Text
-    end)
+    box.FocusLost:Connect(function() Config[varName] = box.Text end)
 end
 
 function UI:CreateButton(parent, text, callback)
@@ -447,7 +539,6 @@ function UI:CreateButton(parent, text, callback)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 11
-    btn.AutoButtonColor = true
     btn.Parent = parent
     btn.MouseButton1Click:Connect(callback)
 end
@@ -482,11 +573,7 @@ for i, tName in ipairs(tabs) do
     page.Visible = (i == 1)
     page.Parent = pagesContainer
 
-    if i == 1 then
-        activePage = page
-        activeTabBtn = btn
-        activeIndicator = indicator
-    end
+    if i == 1 then activePage = page; activeTabBtn = btn; activeIndicator = indicator end
 
     btn.MouseButton1Click:Connect(function()
         activePage.Visible = false
@@ -500,7 +587,6 @@ for i, tName in ipairs(tabs) do
         activeIndicator = indicator
     end)
 
-    -- ==================== LEGITBOT ====================
     if tName == "Legitbot" then
         local s1 = UI:CreateSection(page, "Aimbot", UDim2.new(0, 245, 0, 200), UDim2.new(0, 5, 0, 5))
         UI:CreateCheckbox(s1, "Enable Aim", "AimEnabled")
@@ -508,7 +594,6 @@ for i, tName in ipairs(tabs) do
         UI:CreateSlider(s1, "FOV Radius", 10, 400, "AimRadius")
         UI:CreateSlider(s1, "Smoothness", 1, 20, "AimSmoothness")
         UI:CreateDropdown(s1, "Target", {"Head", "Torso", "Gun"}, "AimTargetMode")
-        UI:CreateCheckbox(s1, "Team Check", "AimTeamCheck")
         UI:CreateCheckbox(s1, "Visible Only", "AimVisibleOnly")
         UI:CreateCheckbox(s1, "Prediction", "AimPrediction")
 
@@ -518,10 +603,9 @@ for i, tName in ipairs(tabs) do
         UI:CreateSlider(s2, "Delay (ms)", 0, 500, "TriggerDelay")
         UI:CreateCheckbox(s2, "Only Murderer", "TriggerOnlyMurderer")
 
-        local s3 = UI:CreateSection(page, "FOV Circle", UDim2.new(0, 500, 0, 55), UDim2.new(0, 5, 0, 210))
+        local s3 = UI:CreateSection(page, "FOV", UDim2.new(0, 500, 0, 55), UDim2.new(0, 5, 0, 210))
         UI:CreateCheckbox(s3, "Show FOV Circle", "ShowFOV")
 
-    -- ==================== RAGEBOT ====================
     elseif tName == "Ragebot" then
         local s1 = UI:CreateSection(page, "Silent Aim", UDim2.new(0, 245, 0, 100), UDim2.new(0, 5, 0, 5))
         UI:CreateCheckbox(s1, "Silent Aim (Sheriff)", "SilentAim")
@@ -534,28 +618,27 @@ for i, tName in ipairs(tabs) do
         local s3 = UI:CreateSection(page, "Auto Pickup", UDim2.new(0, 245, 0, 60), UDim2.new(0, 5, 0, 115))
         UI:CreateCheckbox(s3, "Auto Grab Dropped Gun", "AutoGrabGun")
 
-    -- ==================== VISUALS ====================
     elseif tName == "Visuals" then
         local s1 = UI:CreateSection(page, "ESP", UDim2.new(0, 245, 0, 175), UDim2.new(0, 5, 0, 5))
         UI:CreateCheckbox(s1, "Enable ESP", "EspPlayers")
         UI:CreateCheckbox(s1, "Boxes", "EspBoxes")
         UI:CreateCheckbox(s1, "Names", "EspNames")
-        UI:CreateCheckbox(s1, "Health Bars", "EspHealth")
+        UI:CreateCheckbox(s1, "Health", "EspHealth")
         UI:CreateCheckbox(s1, "Distance", "EspDistance")
         UI:CreateCheckbox(s1, "Tracers", "EspTracers")
         UI:CreateCheckbox(s1, "Color by Role", "EspRoles")
 
-        local s2 = UI:CreateSection(page, "World ESP", UDim2.new(0, 245, 0, 90), UDim2.new(0, 260, 0, 5))
-        UI:CreateCheckbox(s2, "Dropped Gun ESP", "EspGun")
-        UI:CreateCheckbox(s2, "Show ClanTags", "ShowClanTags")
+        local s2 = UI:CreateSection(page, "ClanTags", UDim2.new(0, 245, 0, 90), UDim2.new(0, 260, 0, 5))
+        UI:CreateCheckbox(s2, "Show My Own Tag", "ShowOwnTag")
+        UI:CreateCheckbox(s2, "Show Others' Tags", "ShowClanTags")
+        UI:CreateButton(s2, "Refresh My Tag", function() applyOwnTag() end)
 
         local s3 = UI:CreateSection(page, "World", UDim2.new(0, 500, 0, 130), UDim2.new(0, 5, 0, 185))
         UI:CreateSlider(s3, "Camera FOV", 70, 120, "StretchedResolution")
         UI:CreateCheckbox(s3, "Full Bright", "FullBright")
         UI:CreateCheckbox(s3, "Remove Fog", "RemoveFog")
-        UI:CreateCheckbox(s3, "Third Person", "ThirdPerson")
+        UI:CreateCheckbox(s3, "Dropped Gun ESP", "EspGun")
 
-    -- ==================== MOVEMENT ====================
     elseif tName == "Movement" then
         local s1 = UI:CreateSection(page, "Speed & Jump", UDim2.new(0, 245, 0, 130), UDim2.new(0, 5, 0, 5))
         UI:CreateSlider(s1, "WalkSpeed", 16, 100, "WalkSpeed")
@@ -563,12 +646,11 @@ for i, tName in ipairs(tabs) do
         UI:CreateCheckbox(s1, "Infinite Jump", "InfiniteJump")
 
         local s2 = UI:CreateSection(page, "Exploits", UDim2.new(0, 245, 0, 130), UDim2.new(0, 260, 0, 5))
-        UI:CreateCheckbox(s2, "Fast BHop (Hold Space)", "FastBHop")
+        UI:CreateCheckbox(s2, "Fast BHop", "FastBHop")
         UI:CreateCheckbox(s2, "WallHop", "WallHop")
         UI:CreateCheckbox(s2, "NoClip", "NoClip")
         UI:CreateCheckbox(s2, "Anti-Fling", "AntiFling")
 
-    -- ==================== MM2 EXPLOIT ====================
     elseif tName == "MM2 Exploit" then
         local s1 = UI:CreateSection(page, "Fling", UDim2.new(0, 245, 0, 160), UDim2.new(0, 5, 0, 5))
         UI:CreateInput(s1, "Target Name", "FlingTarget")
@@ -579,8 +661,8 @@ for i, tName in ipairs(tabs) do
         end)
 
         local s2 = UI:CreateSection(page, "Teleports", UDim2.new(0, 245, 0, 160), UDim2.new(0, 260, 0, 5))
-        UI:CreateInput(s2, "TP to Player", "FlingTarget")
-        UI:CreateButton(s2, "Teleport", function()
+        UI:CreateInput(s2, "TP Target", "FlingTarget")
+        UI:CreateButton(s2, "TP to Player", function()
             local target = Players:FindFirstChild(Config.FlingTarget)
             local char = LocalPlayer.Character
             if target and target.Character and char and char:FindFirstChild("HumanoidRootPart") then
@@ -595,14 +677,13 @@ for i, tName in ipairs(tabs) do
             end
         end)
 
-    -- ==================== MISC ====================
     elseif tName == "Misc" then
-        local s1 = UI:CreateSection(page, "Info", UDim2.new(0, 500, 0, 100), UDim2.new(0, 5, 0, 5))
+        local s1 = UI:CreateSection(page, "Info", UDim2.new(0, 500, 0, 90), UDim2.new(0, 5, 0, 5))
         local info = Instance.new("TextLabel")
-        info.Size = UDim2.new(1, 0, 0, 60)
+        info.Size = UDim2.new(1, 0, 0, 55)
         info.BackgroundTransparency = 1
         info.RichText = true
-        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2</font> | Full Edition\nПресс <b>INSERT</b> — скрыть/показать меню\nАвтор: private build"
+        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2</font> | Full Edition\n<b>INSERT</b> — скрыть/показать | <b>✕</b> — полный выход"
         info.TextColor3 = Color3.fromRGB(180, 180, 180)
         info.Font = Enum.Font.Gotham
         info.TextSize = 12
@@ -610,22 +691,18 @@ for i, tName in ipairs(tabs) do
         info.TextYAlignment = Enum.TextYAlignment.Top
         info.Parent = s1
 
-        local s2 = UI:CreateSection(page, "Server", UDim2.new(0, 245, 0, 90), UDim2.new(0, 5, 0, 115))
+        local s2 = UI:CreateSection(page, "Server", UDim2.new(0, 245, 0, 90), UDim2.new(0, 5, 0, 105))
         UI:CreateButton(s2, "Rejoin Server", function()
             game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
         end)
-        UI:CreateButton(s2, "Server Hop", function()
-            local ts = game:GetService("TeleportService")
-            pcall(function() ts:Teleport(game.PlaceId, LocalPlayer) end)
-        end)
-
-        local s3 = UI:CreateSection(page, "Character", UDim2.new(0, 245, 0, 90), UDim2.new(0, 260, 0, 115))
-        UI:CreateButton(s3, "Reset Character", function()
+        UI:CreateButton(s2, "Reset Character", function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health = 0
             end
         end)
-        UI:CreateButton(s3, "Refresh Tag", giveTagTool)
+
+        local s3 = UI:CreateSection(page, "Unload", UDim2.new(0, 245, 0, 90), UDim2.new(0, 260, 0, 105))
+        UI:CreateButton(s3, "UNLOAD MemeSense", unloadCheat)
     end
 end
 
@@ -636,11 +713,10 @@ if Drawing then
     FOVCircle.Thickness = 1
     FOVCircle.NumSides = 60
     FOVCircle.Filled = false
-    FOVCircle.Color = Config.FOVColor
+    FOVCircle.Color = Color3.fromRGB(235, 50, 75)
     FOVCircle.Visible = false
 end
 
--- ===== ROLE =====
 local function GetRole(p)
     if not p or not p.Character then return "Innocent" end
     local bp = p:FindFirstChild("Backpack")
@@ -649,12 +725,10 @@ local function GetRole(p)
     return "Innocent"
 end
 
--- ===== ESP FOLDER =====
 local EspFolder = Instance.new("Folder")
 EspFolder.Name = "MemeESP"
 EspFolder.Parent = CoreGui
 
--- ===== TRIGGER BOT =====
 local lastTrigger = 0
 local function tryTrigger()
     if tick() - lastTrigger < Config.TriggerDelay/1000 then return end
@@ -674,8 +748,17 @@ local function tryTrigger()
     end
 end
 
+-- Периодически проверяем чужие теги
+task.spawn(function()
+    while not UNLOADED do
+        pcall(checkOtherTags)
+        task.wait(1)
+    end
+end)
+
 -- ===== MAIN LOOP =====
 RunService.RenderStepped:Connect(function()
+    if UNLOADED then return end
     EspFolder:ClearAllChildren()
 
     local char = LocalPlayer.Character
@@ -688,34 +771,33 @@ RunService.RenderStepped:Connect(function()
     hum.JumpPower = Config.JumpPower
     Camera.FieldOfView = Config.StretchedResolution
 
-    -- FullBright
+    -- Свой тег включен/выключен
+    local head = char:FindFirstChild("Head")
+    if head then
+        local myTag = head:FindFirstChild("MemeSense_ClanTag")
+        if Config.ShowOwnTag and not myTag then
+            createTagGui(char)
+        elseif not Config.ShowOwnTag and myTag then
+            myTag:Destroy()
+        end
+    end
+
     if Config.FullBright then
-        game.Lighting.Brightness = 3
-        game.Lighting.Ambient = Color3.new(1,1,1)
-        game.Lighting.OutdoorAmbient = Color3.new(1,1,1)
+        Lighting.Brightness = 3
+        Lighting.Ambient = Color3.new(1,1,1)
+        Lighting.OutdoorAmbient = Color3.new(1,1,1)
     end
-    if Config.RemoveFog then
-        game.Lighting.FogEnd = 100000
-    end
+    if Config.RemoveFog then Lighting.FogEnd = 100000 end
 
-    -- Third Person
-    if Config.ThirdPerson then
-        LocalPlayer.CameraMode = Enum.CameraMode.Classic
-        LocalPlayer.CameraMinZoomDistance = 10
-    end
-
-    -- Infinite Jump
     if Config.InfiniteJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 
-    -- BHop
     if Config.FastBHop and UserInputService:IsKeyDown(Enum.KeyCode.Space) and hum.MoveDirection.Magnitude > 0 then
         hum.Jump = true
         hrp.CFrame += hum.MoveDirection * 0.15
     end
 
-    -- WallHop
     if Config.WallHop and hum:GetState() == Enum.HumanoidStateType.Freefall and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
         local ray = Ray.new(hrp.Position, hrp.CFrame.LookVector * 2.5)
         local hit = Workspace:FindPartOnRayWithIgnoreList(ray, {char})
@@ -725,14 +807,12 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- NoClip
     if Config.NoClip then
         for _, p in pairs(char:GetChildren()) do
             if p:IsA("BasePart") then p.CanCollide = false end
         end
     end
 
-    -- Anti-Fling
     if Config.AntiFling then
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
@@ -746,7 +826,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- ESP
     if Config.EspPlayers then
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -760,27 +839,6 @@ RunService.RenderStepped:Connect(function()
                     if role == "Murderer" then color = Color3.fromRGB(255, 40, 40)
                     elseif role == "Sheriff" then color = Color3.fromRGB(40, 100, 255)
                     else color = Color3.fromRGB(60, 220, 60) end
-                end
-
-                local bp = p:FindFirstChild("Backpack")
-                local hasTag = (bp and bp:FindFirstChild("MemeSense_Tag")) or pChar:FindFirstChild("MemeSense_Tag")
-                if hasTag and Config.ShowClanTags and pHead then
-                    color = Color3.fromRGB(235, 50, 75)
-                    local bg = Instance.new("BillboardGui")
-                    bg.Adornee = pHead
-                    bg.Size = UDim2.new(0, 120, 0, 20)
-                    bg.StudsOffset = Vector3.new(0, 3.5, 0)
-                    bg.AlwaysOnTop = true
-                    bg.Parent = EspFolder
-
-                    local tag = Instance.new("TextLabel")
-                    tag.Size = UDim2.new(1, 0, 1, 0)
-                    tag.BackgroundTransparency = 1
-                    tag.Text = "[MemeSense]"
-                    tag.TextColor3 = Color3.fromRGB(235, 50, 75)
-                    tag.Font = Enum.Font.GothamBold
-                    tag.TextSize = 13
-                    tag.Parent = bg
                 end
 
                 if Config.EspBoxes then
@@ -798,7 +856,7 @@ RunService.RenderStepped:Connect(function()
                     local bg = Instance.new("BillboardGui")
                     bg.Adornee = pHead
                     bg.Size = UDim2.new(0, 150, 0, 40)
-                    bg.StudsOffset = Vector3.new(0, 2.5, 0)
+                    bg.StudsOffset = Vector3.new(0, 2, 0)
                     bg.AlwaysOnTop = true
                     bg.Parent = EspFolder
 
@@ -822,28 +880,10 @@ RunService.RenderStepped:Connect(function()
                     lbl.TextStrokeTransparency = 0.5
                     lbl.Parent = bg
                 end
-
-                if Config.EspTracers then
-                    local screen = Instance.new("ScreenGui")
-                    screen.Parent = EspFolder
-                    local line = Drawing and Drawing.new("Line")
-                    if line then
-                        local pos, on = Camera:WorldToViewportPoint(pChar.HumanoidRootPart.Position)
-                        if on then
-                            line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-                            line.To = Vector2.new(pos.X, pos.Y)
-                            line.Color = color
-                            line.Thickness = 1
-                            line.Visible = true
-                            task.delay(0.03, function() line:Remove() end)
-                        end
-                    end
-                end
             end
         end
     end
 
-    -- Gun ESP
     local gunDrop = Workspace:FindFirstChild("GunDrop")
     if Config.EspGun and gunDrop then
         local box = Instance.new("BoxHandleAdornment")
@@ -854,11 +894,8 @@ RunService.RenderStepped:Connect(function()
         box.Adornee = gunDrop
         box.Parent = EspFolder
     end
-    if Config.AutoGrabGun and gunDrop then
-        hrp.CFrame = gunDrop.CFrame
-    end
+    if Config.AutoGrabGun and gunDrop then hrp.CFrame = gunDrop.CFrame end
 
-    -- Fling Murderer
     if Config.FlingMurderer then
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and GetRole(p) == "Murderer" and p.Character then
@@ -867,7 +904,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- KillAura
     if Config.KillAura and char:FindFirstChild("Knife") then
         local knife = char.Knife
         if knife:FindFirstChild("Handle") then
@@ -885,7 +921,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- AutoShoot
     if Config.AutoShoot and char:FindFirstChild("Gun") then
         for _, p in pairs(Players:GetPlayers()) do
             if GetRole(p) == "Murderer" and p.Character then
@@ -898,7 +933,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- TriggerBot
     if Config.TriggerBot then
         local pressed = false
         if Config.TriggerBind:find("MouseButton") then
@@ -912,15 +946,12 @@ RunService.RenderStepped:Connect(function()
         if pressed then tryTrigger() end
     end
 
-    -- FOV Circle
     if FOVCircle then
         FOVCircle.Visible = Config.ShowFOV and Config.AimEnabled
         FOVCircle.Position = UserInputService:GetMouseLocation()
         FOVCircle.Radius = Config.AimRadius
-        FOVCircle.Color = Config.FOVColor
     end
 
-    -- Aimbot
     if Config.AimEnabled then
         local isPressed = false
         if Config.AimBind:find("MouseButton") then
@@ -940,23 +971,20 @@ RunService.RenderStepped:Connect(function()
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") then
                     local role = GetRole(p)
-                    if Config.AimTargetMode == "Gun" and role ~= "Sheriff" then continue end
+                    if not (Config.AimTargetMode == "Gun" and role ~= "Sheriff") then
+                        local aimPart = p.Character:FindFirstChild("Head")
+                        if Config.AimTargetMode == "Torso" then aimPart = p.Character:FindFirstChild("HumanoidRootPart") or aimPart end
 
-                    local aimPart = p.Character:FindFirstChild("Head")
-                    if Config.AimTargetMode == "Torso" then aimPart = p.Character:FindFirstChild("HumanoidRootPart") or aimPart end
-
-                    if aimPart then
-                        local aimPos = aimPart.Position
-                        if Config.AimPrediction then
-                            local vel = aimPart.AssemblyLinearVelocity or Vector3.new()
-                            aimPos = aimPos + vel * 0.15
-                        end
-                        local pos, onScreen = Camera:WorldToViewportPoint(aimPos)
-                        if onScreen then
-                            local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                            if dist < maxD then
-                                target = aimPart
-                                maxD = dist
+                        if aimPart then
+                            local aimPos = aimPart.Position
+                            if Config.AimPrediction then
+                                local vel = aimPart.AssemblyLinearVelocity or Vector3.new()
+                                aimPos = aimPos + vel * 0.15
+                            end
+                            local pos, onScreen = Camera:WorldToViewportPoint(aimPos)
+                            if onScreen then
+                                local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                                if dist < maxD then target = aimPart; maxD = dist end
                             end
                         end
                     end
@@ -971,4 +999,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ MemeSense MM2 Full Edition LOADED | INSERT to toggle")
+print("✅ MemeSense MM2 v3 LOADED | INSERT toggle | ✕ full unload")
