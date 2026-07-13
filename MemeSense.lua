@@ -1,6 +1,6 @@
 -- ==========================================
--- MEMESENSE MM2 | FULL EDITION v5.1
--- (Bigger menu, Anti-Aim visible)
+-- MEMESENSE MM2 | FULL EDITION v6.3
+-- Fixed HUD | KillAura | SilentAim | AutoFire | PlayerPicker
 -- ==========================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
@@ -17,7 +18,25 @@ pcall(function()
     if CoreGui:FindFirstChild("MemeSense_UI") then CoreGui.MemeSense_UI:Destroy() end
     if CoreGui:FindFirstChild("MemeESP") then CoreGui.MemeESP:Destroy() end
     if CoreGui:FindFirstChild("AntiAim_HUD") then CoreGui.AntiAim_HUD:Destroy() end
+    if CoreGui:FindFirstChild("MemeSense_Watermark") then CoreGui.MemeSense_Watermark:Destroy() end
 end)
+
+for _, p in pairs(Players:GetPlayers()) do
+    if p.Character then
+        local head = p.Character:FindFirstChild("Head")
+        if head then
+            local old = head:FindFirstChild("MemeSense_ClanTag")
+            if old then old:Destroy() end
+        end
+        local oldMarker = p.Character:FindFirstChild("MemeSense_Tag")
+        if oldMarker then oldMarker:Destroy() end
+    end
+    local bp = p:FindFirstChild("Backpack")
+    if bp then
+        local oldMarker = bp:FindFirstChild("MemeSense_Tag")
+        if oldMarker then oldMarker:Destroy() end
+    end
+end
 
 -- ===== CONFIG =====
 local Config = {
@@ -34,9 +53,10 @@ local Config = {
 
     KillAura = false, KillAuraBind = "F", AuraRadius = 15,
     AutoShoot = false, AutoShootBind = "G",
+    AutoFireSheriff = false,
     AutoGrabGun = false, AutoGrabBind = "H",
-    SilentAim = false,
-    FlingTarget = "", FlingMurderer = false, FlingBind = "V",
+    SilentAim = false, SilentAimFOV = 200,
+    SelectedPlayer = "", FlingMurderer = false, FlingBind = "V",
 
     NoRecoil = false, NoSpread = false, InstantReload = false,
 
@@ -55,8 +75,12 @@ local Config = {
     AntiAimSlowWalk = false, AntiAimAtTargets = false,
     AntiAimShowIndicator = true,
 
+    Watermark = true,
+
     PanicBind = "End", MenuBind = "Insert",
 }
+
+local UNLOADED = false
 
 -- ===== CONFIG SYSTEM =====
 local ConfigFolder = "MemeSense_Configs"
@@ -102,65 +126,103 @@ local function DeleteConfig(name)
     end)
 end
 
--- ===== TAG =====
-local function giveTagMarker()
-    local bp = LocalPlayer:FindFirstChild("Backpack")
-    if not bp or bp:FindFirstChild("MemeSense_Tag") then return end
-    local tool = Instance.new("Tool")
-    tool.Name = "MemeSense_Tag"; tool.RequiresHandle = false; tool.CanBeDropped = false
-    tool.Parent = bp
+-- ===== ROLE DETECTION =====
+local function GetRole(p)
+    if not p or not p.Character then return "Innocent" end
+    local bp = p:FindFirstChild("Backpack")
+    if (bp and bp:FindFirstChild("Knife")) or p.Character:FindFirstChild("Knife") then return "Murderer" end
+    if (bp and bp:FindFirstChild("Gun")) or p.Character:FindFirstChild("Gun") then return "Sheriff" end
+    return "Innocent"
 end
 
-local function removeTagMarker()
-    local bp = LocalPlayer:FindFirstChild("Backpack")
-    if bp then local m = bp:FindFirstChild("MemeSense_Tag"); if m then m:Destroy() end end
-    if LocalPlayer.Character then
-        local m = LocalPlayer.Character:FindFirstChild("MemeSense_Tag")
-        if m then m:Destroy() end
+local function GetMurderer()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and GetRole(p) == "Murderer" then return p end
     end
+    return nil
 end
 
-local function createTagGui(character)
-    if not character then return end
-    local head = character:FindFirstChild("Head")
-    if not head or head:FindFirstChild("MemeSense_ClanTag") then return end
+-- ===== CLAN TAG =====
+local originalNames = {}
 
-    local bg = Instance.new("BillboardGui")
-    bg.Name = "MemeSense_ClanTag"; bg.Adornee = head
-    bg.Size = UDim2.new(0, 200, 0, 30); bg.StudsOffset = Vector3.new(0, 3, 0)
-    bg.AlwaysOnTop = true; bg.LightInfluence = 0; bg.Parent = head
-
-    local tag = Instance.new("TextLabel")
-    tag.Size = UDim2.new(1, 0, 1, 0); tag.BackgroundTransparency = 1
-    tag.RichText = true
-    tag.Text = '<font color="rgb(235,50,75)">★ </font><font color="rgb(255,255,255)">Meme</font><font color="rgb(235,50,75)">Sense</font><font color="rgb(235,50,75)"> ★</font>'
-    tag.Font = Enum.Font.GothamBold; tag.TextSize = 16
-    tag.TextStrokeTransparency = 0; tag.TextStrokeColor3 = Color3.fromRGB(0,0,0)
-    tag.Parent = bg
+local function applyClanTag(character, player)
+    if not character or not player then return end
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    if not originalNames[player.UserId] then
+        originalNames[player.UserId] = (hum.DisplayName ~= "" and hum.DisplayName) or player.Name
+    end
+    pcall(function()
+        hum.DisplayName = "★ MemeSense ★ | " .. originalNames[player.UserId]
+    end)
 end
 
-local function removeTagGui(character)
-    if not character then return end
-    local head = character:FindFirstChild("Head")
-    if head then local t = head:FindFirstChild("MemeSense_ClanTag"); if t then t:Destroy() end end
+local function removeClanTag(character, player)
+    if not character or not player then return end
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local orig = originalNames[player.UserId] or player.Name
+    pcall(function() hum.DisplayName = orig end)
 end
 
-giveTagMarker()
-if LocalPlayer.Character and Config.ShowOwnTag then createTagGui(LocalPlayer.Character) end
+if LocalPlayer.Character and Config.ShowOwnTag then
+    applyClanTag(LocalPlayer.Character, LocalPlayer)
+end
+
 LocalPlayer.CharacterAdded:Connect(function(char)
-    task.wait(0.5); giveTagMarker()
-    if Config.ShowOwnTag then createTagGui(char) end
+    task.wait(0.5)
+    if Config.ShowOwnTag then applyClanTag(char, LocalPlayer) end
 end)
 
-local function checkOtherTags()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local bp = p:FindFirstChild("Backpack")
-            local hasMarker = (bp and bp:FindFirstChild("MemeSense_Tag")) or p.Character:FindFirstChild("MemeSense_Tag")
-            if hasMarker and Config.ShowClanTags then createTagGui(p.Character)
-            else removeTagGui(p.Character) end
-        end
+task.spawn(function()
+    while not UNLOADED do
+        pcall(function()
+            if LocalPlayer.Character then
+                if Config.ShowOwnTag then applyClanTag(LocalPlayer.Character, LocalPlayer)
+                else removeClanTag(LocalPlayer.Character, LocalPlayer) end
+            end
+        end)
+        task.wait(2)
     end
+end)
+
+-- ===== SILENT AIM (Metamethod Hook) =====
+local mt = getrawmetatable and getrawmetatable(game)
+local oldNamecall
+if mt and setreadonly then
+    setreadonly(mt, false)
+    oldNamecall = mt.__namecall
+    mt.__namecall = newcclosure and newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        if not UNLOADED and Config.SilentAim and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "Raycast") then
+            local closest, minDist = nil, Config.SilentAimFOV
+            local mousePos = UserInputService:GetMouseLocation()
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") then
+                    if GetRole(p) == "Murderer" or not Config.TriggerOnlyMurderer then
+                        local hpos, onScreen = Camera:WorldToViewportPoint(p.Character.Head.Position)
+                        if onScreen then
+                            local d = (Vector2.new(hpos.X, hpos.Y) - mousePos).Magnitude
+                            if d < minDist then closest = p.Character.Head; minDist = d end
+                        end
+                    end
+                end
+            end
+            if closest then
+                if method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
+                    local origin = Camera.CFrame.Position
+                    local newRay = Ray.new(origin, (closest.Position - origin).Unit * 1000)
+                    args[1] = newRay
+                elseif method == "Raycast" then
+                    args[2] = (closest.Position - args[1]).Unit * 1000
+                end
+                return oldNamecall(self, table.unpack(args))
+            end
+        end
+        return oldNamecall(self, ...)
+    end) or function(self, ...) return oldNamecall(self, ...) end
+    setreadonly(mt, true)
 end
 
 -- ===== FLING =====
@@ -192,7 +254,6 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "MemeSense_UI"; screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true; screenGui.Parent = CoreGui
 
--- ⭐ БОЛЬШОЕ МЕНЮ
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 720, 0, 560)
 mainFrame.Position = UDim2.new(0.5, -360, 0.5, -280)
@@ -222,15 +283,15 @@ minBtn.AutoButtonColor = false; minBtn.ZIndex = 10; minBtn.Parent = mainFrame
 closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(235,50,75); closeBtn.TextColor3 = Color3.fromRGB(255,255,255) end)
 closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30); closeBtn.TextColor3 = Color3.fromRGB(235,50,75) end)
 
-local UNLOADED = false
 local unloadCheat
 unloadCheat = function()
     UNLOADED = true
     pcall(function() screenGui:Destroy() end)
     pcall(function() if CoreGui:FindFirstChild("MemeESP") then CoreGui.MemeESP:Destroy() end end)
     pcall(function() if CoreGui:FindFirstChild("AntiAim_HUD") then CoreGui.AntiAim_HUD:Destroy() end end)
-    for _, p in pairs(Players:GetPlayers()) do if p.Character then removeTagGui(p.Character) end end
-    removeTagMarker(); Camera.FieldOfView = 70
+    pcall(function() if CoreGui:FindFirstChild("MemeSense_Watermark") then CoreGui.MemeSense_Watermark:Destroy() end end)
+    pcall(function() if LocalPlayer.Character then removeClanTag(LocalPlayer.Character, LocalPlayer) end end)
+    Camera.FieldOfView = 70
     if LocalPlayer.Character then
         local h = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         if h then h.WalkSpeed = 16; h.JumpPower = 50 end
@@ -240,7 +301,6 @@ end
 closeBtn.MouseButton1Click:Connect(unloadCheat)
 minBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
 
--- ⭐ ШИРЕ САЙДБАР
 local sideBar = Instance.new("Frame")
 sideBar.Size = UDim2.new(0, 160, 1, -2); sideBar.Position = UDim2.new(0, 0, 0, 2)
 sideBar.BackgroundColor3 = Color3.fromRGB(12, 12, 12); sideBar.BorderColor3 = Color3.fromRGB(25, 25, 25)
@@ -276,6 +336,7 @@ end)
 -- ===== UI LIB =====
 local UI = {}
 local allCheckboxes, allSliders, allBinds, allDropdowns = {}, {}, {}, {}
+local playerDropdowns = {}
 
 function UI:CreateSection(parent, name, size, pos)
     local section = Instance.new("Frame")
@@ -430,22 +491,81 @@ function UI:CreateDropdown(parent, text, options, varName)
     allDropdowns[varName] = {btn = btn, opts = options}
 end
 
-function UI:CreateInput(parent, text, varName)
+-- ===== PLAYER PICKER (Real Dropdown) =====
+function UI:CreatePlayerDropdown(parent, text, varName)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -6, 0, 22); frame.BackgroundTransparency = 1; frame.Parent = parent
+    frame.ZIndex = 5
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -105, 1, 0); label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0.4, -5, 1, 0); label.BackgroundTransparency = 1
     label.Text = text; label.TextColor3 = Color3.fromRGB(175, 175, 175)
     label.Font = Enum.Font.Gotham; label.TextSize = 11
     label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = frame
 
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0, 100, 0, 18); box.Position = UDim2.new(1, -100, 0, 2)
-    box.BackgroundColor3 = Color3.fromRGB(25, 25, 25); box.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    box.Text = Config[varName] or ""; box.TextColor3 = Color3.fromRGB(255, 255, 255)
-    box.Font = Enum.Font.Gotham; box.TextSize = 10; box.Parent = frame
-    box.FocusLost:Connect(function() Config[varName] = box.Text end)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.6, 0, 0, 18); btn.Position = UDim2.new(0.4, 0, 0, 2)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 28, 28); btn.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    btn.Text = Config[varName] ~= "" and Config[varName] or "Select Player..."
+    btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+    btn.Font = Enum.Font.Gotham; btn.TextSize = 10; btn.AutoButtonColor = false; btn.Parent = frame
+
+    local dropList = Instance.new("ScrollingFrame")
+    dropList.Size = UDim2.new(0.6, 0, 0, 0); dropList.Position = UDim2.new(0.4, 0, 0, 21)
+    dropList.BackgroundColor3 = Color3.fromRGB(20, 20, 20); dropList.BorderColor3 = Color3.fromRGB(50,50,50)
+    dropList.ScrollBarThickness = 3; dropList.ScrollBarImageColor3 = Color3.fromRGB(235,50,75)
+    dropList.Visible = false; dropList.ZIndex = 20
+    dropList.CanvasSize = UDim2.new(0,0,0,0); dropList.Parent = frame
+
+    local dlList = Instance.new("UIListLayout")
+    dlList.Padding = UDim.new(0, 1); dlList.Parent = dropList
+    dlList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        dropList.CanvasSize = UDim2.new(0,0,0,dlList.AbsoluteContentSize.Y)
+    end)
+
+    local function refresh()
+        for _, c in pairs(dropList:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local role = GetRole(p)
+                local rColor = "rgb(60,220,60)"
+                if role == "Murderer" then rColor = "rgb(255,50,50)"
+                elseif role == "Sheriff" then rColor = "rgb(50,150,255)" end
+
+                local it = Instance.new("TextButton")
+                it.Size = UDim2.new(1, -6, 0, 18); it.BackgroundColor3 = Color3.fromRGB(28,28,28)
+                it.BorderSizePixel = 0; it.ZIndex = 21
+                it.RichText = true
+                it.Text = string.format('  %s <font color="%s">[%s]</font>', p.Name, rColor, role:sub(1,1))
+                it.TextColor3 = Color3.fromRGB(220,220,220); it.Font = Enum.Font.Gotham
+                it.TextSize = 10; it.TextXAlignment = Enum.TextXAlignment.Left
+                it.AutoButtonColor = false; it.Parent = dropList
+
+                it.MouseEnter:Connect(function() it.BackgroundColor3 = Color3.fromRGB(45,45,45) end)
+                it.MouseLeave:Connect(function() it.BackgroundColor3 = Color3.fromRGB(28,28,28) end)
+                it.MouseButton1Click:Connect(function()
+                    Config[varName] = p.Name
+                    btn.Text = p.Name
+                    dropList.Visible = false
+                    frame.Size = UDim2.new(1, -6, 0, 22)
+                end)
+            end
+        end
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        dropList.Visible = not dropList.Visible
+        if dropList.Visible then
+            refresh()
+            local h = math.min(#Players:GetPlayers() * 19, 100)
+            dropList.Size = UDim2.new(0.6, 0, 0, h)
+            frame.Size = UDim2.new(1, -6, 0, 22 + h + 2)
+        else
+            frame.Size = UDim2.new(1, -6, 0, 22)
+        end
+    end)
+
+    table.insert(playerDropdowns, {btn = btn, varName = varName})
 end
 
 function UI:CreateButton(parent, text, callback)
@@ -478,7 +598,7 @@ local function refreshUI()
     end
 end
 
--- ===== TABS ===== ⭐ Компактнее по высоте (24px), точно 8 влезает
+-- ===== TABS =====
 local tabs = {"Legitbot", "Ragebot", "Anti-Aim", "Visuals", "Movement", "MM2 Exploit", "Configs", "Misc"}
 local activePage, activeTabBtn, activeIndicator
 
@@ -489,7 +609,6 @@ for i, tName in ipairs(tabs) do
     btn.BackgroundTransparency = 1
     btn.Text = "  " .. tName
 
-    -- ⭐ Anti-Aim выделим ярким цветом
     if tName == "Anti-Aim" then
         btn.TextColor3 = i == 1 and Color3.fromRGB(235, 50, 75) or Color3.fromRGB(255, 100, 100)
     else
@@ -545,24 +664,25 @@ for i, tName in ipairs(tabs) do
         UI:CreateCheckbox(s3, "Instant Reload", "InstantReload")
 
     elseif tName == "Ragebot" then
-        local s1 = UI:CreateSection(page, "Silent Aim", UDim2.new(0, 260, 0, 100), UDim2.new(0, 5, 0, 5))
-        UI:CreateCheckbox(s1, "Silent Aim (Sheriff)", "SilentAim")
+        local s1 = UI:CreateSection(page, "Silent Aim", UDim2.new(0, 260, 0, 130), UDim2.new(0, 5, 0, 5))
+        UI:CreateCheckbox(s1, "Silent Aim (Metamethod)", "SilentAim")
+        UI:CreateSlider(s1, "Silent FOV", 50, 500, "SilentAimFOV")
 
-        local s2 = UI:CreateSection(page, "Kill Aura", UDim2.new(0, 260, 0, 150), UDim2.new(0, 275, 0, 5))
-        UI:CreateCheckbox(s2, "Kill Aura (Murderer)", "KillAura")
+        local s2 = UI:CreateSection(page, "Kill Aura (Murderer)", UDim2.new(0, 260, 0, 130), UDim2.new(0, 275, 0, 5))
+        UI:CreateCheckbox(s2, "Enable Kill Aura", "KillAura")
         UI:CreateBindButton(s2, "KillAura Key", "KillAuraBind")
         UI:CreateSlider(s2, "Aura Radius", 5, 50, "AuraRadius")
 
-        local s3 = UI:CreateSection(page, "Auto Shoot", UDim2.new(0, 260, 0, 110), UDim2.new(0, 5, 0, 110))
-        UI:CreateCheckbox(s3, "Auto Shoot Murderer", "AutoShoot")
+        local s3 = UI:CreateSection(page, "Auto Fire (Sheriff)", UDim2.new(0, 260, 0, 130), UDim2.new(0, 5, 0, 140))
+        UI:CreateCheckbox(s3, "Auto Fire Murderer", "AutoFireSheriff")
+        UI:CreateCheckbox(s3, "Auto Shoot (Camera Snap)", "AutoShoot")
         UI:CreateBindButton(s3, "AutoShoot Key", "AutoShootBind")
 
-        local s4 = UI:CreateSection(page, "Auto Pickup", UDim2.new(0, 260, 0, 110), UDim2.new(0, 275, 0, 160))
+        local s4 = UI:CreateSection(page, "Auto Pickup", UDim2.new(0, 260, 0, 130), UDim2.new(0, 275, 0, 140))
         UI:CreateCheckbox(s4, "Auto Grab Dropped Gun", "AutoGrabGun")
         UI:CreateBindButton(s4, "AutoGrab Key", "AutoGrabBind")
 
     elseif tName == "Anti-Aim" then
-        -- Заметный заголовок
         local hdr = Instance.new("TextLabel")
         hdr.Size = UDim2.new(1, -10, 0, 30); hdr.Position = UDim2.new(0, 5, 0, 0)
         hdr.BackgroundTransparency = 1; hdr.RichText = true
@@ -587,7 +707,7 @@ for i, tName in ipairs(tabs) do
         UI:CreateSlider(s3, "Desync Angle", 0, 180, "AntiAimDesyncAngle")
         UI:CreateCheckbox(s3, "Fake Lag (choke ticks)", "AntiAimFakeLag")
         UI:CreateSlider(s3, "Fake Lag Interval", 1, 10, "AntiAimFakeLagInterval")
-        UI:CreateCheckbox(s3, "Look At Enemies (break aimbot)", "AntiAimAtTargets")
+        UI:CreateCheckbox(s3, "Look At Enemies", "AntiAimAtTargets")
 
     elseif tName == "Visuals" then
         local s1 = UI:CreateSection(page, "ESP", UDim2.new(0, 260, 0, 200), UDim2.new(0, 5, 0, 5))
@@ -599,17 +719,20 @@ for i, tName in ipairs(tabs) do
         UI:CreateCheckbox(s1, "Color by Role", "EspRoles")
         UI:CreateCheckbox(s1, "Dropped Gun ESP", "EspGun")
 
-        local s2 = UI:CreateSection(page, "ClanTags", UDim2.new(0, 260, 0, 130), UDim2.new(0, 275, 0, 5))
-        UI:CreateCheckbox(s2, "Show My Own Tag", "ShowOwnTag")
-        UI:CreateCheckbox(s2, "Show Others' Tags", "ShowClanTags")
+        local s2 = UI:CreateSection(page, "ClanTag (Local)", UDim2.new(0, 260, 0, 130), UDim2.new(0, 275, 0, 5))
+        UI:CreateCheckbox(s2, "Show My Tag", "ShowOwnTag")
         UI:CreateButton(s2, "Refresh Tag", function()
-            giveTagMarker(); if LocalPlayer.Character then createTagGui(LocalPlayer.Character) end
+            if LocalPlayer.Character then applyClanTag(LocalPlayer.Character, LocalPlayer) end
+        end)
+        UI:CreateButton(s2, "Remove Tag", function()
+            if LocalPlayer.Character then removeClanTag(LocalPlayer.Character, LocalPlayer) end
         end)
 
-        local s3 = UI:CreateSection(page, "World", UDim2.new(0, 530, 0, 110), UDim2.new(0, 5, 0, 210))
+        local s3 = UI:CreateSection(page, "World / HUD", UDim2.new(0, 530, 0, 200), UDim2.new(0, 5, 0, 210))
         UI:CreateSlider(s3, "Camera FOV", 70, 120, "StretchedResolution")
         UI:CreateCheckbox(s3, "Full Bright", "FullBright")
         UI:CreateCheckbox(s3, "Remove Fog", "RemoveFog")
+        UI:CreateCheckbox(s3, "HUD (Draggable)", "Watermark")
 
     elseif tName == "Movement" then
         local s1 = UI:CreateSection(page, "Speed & Jump", UDim2.new(0, 260, 0, 180), UDim2.new(0, 5, 0, 5))
@@ -627,25 +750,32 @@ for i, tName in ipairs(tabs) do
         UI:CreateCheckbox(s2, "Anti-Fling", "AntiFling")
 
     elseif tName == "MM2 Exploit" then
-        local s1 = UI:CreateSection(page, "Fling", UDim2.new(0, 260, 0, 200), UDim2.new(0, 5, 0, 5))
-        UI:CreateInput(s1, "Target Name", "FlingTarget")
+        local s1 = UI:CreateSection(page, "Fling Player", UDim2.new(0, 260, 0, 260), UDim2.new(0, 5, 0, 5))
+        UI:CreatePlayerDropdown(s1, "Target:", "SelectedPlayer")
         UI:CreateCheckbox(s1, "Auto Fling Murderer", "FlingMurderer")
         UI:CreateBindButton(s1, "Fling Key", "FlingBind")
         UI:CreateButton(s1, "Execute Fling", function()
-            local target = Players:FindFirstChild(Config.FlingTarget)
+            local target = Players:FindFirstChild(Config.SelectedPlayer)
             if target and target.Character then FlingPlayer(target.Character) end
         end)
 
-        local s2 = UI:CreateSection(page, "Teleports", UDim2.new(0, 260, 0, 200), UDim2.new(0, 275, 0, 5))
-        UI:CreateInput(s2, "TP Target", "FlingTarget")
-        UI:CreateButton(s2, "TP to Player", function()
-            local target = Players:FindFirstChild(Config.FlingTarget)
+        local s2 = UI:CreateSection(page, "Teleports", UDim2.new(0, 260, 0, 260), UDim2.new(0, 275, 0, 5))
+        UI:CreatePlayerDropdown(s2, "TP Target:", "SelectedPlayer")
+        UI:CreateButton(s2, "TP to Selected Player", function()
+            local target = Players:FindFirstChild(Config.SelectedPlayer)
             local char = LocalPlayer.Character
             if target and target.Character and char and char:FindFirstChild("HumanoidRootPart") then
                 char.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(2,0,0)
             end
         end)
-        UI:CreateButton(s2, "TP to Gun", function()
+        UI:CreateButton(s2, "TP to Murderer", function()
+            local m = GetMurderer()
+            local char = LocalPlayer.Character
+            if m and m.Character and char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = m.Character.HumanoidRootPart.CFrame + Vector3.new(3,0,0)
+            end
+        end)
+        UI:CreateButton(s2, "TP to Gun Drop", function()
             local gun = Workspace:FindFirstChild("GunDrop")
             local char = LocalPlayer.Character
             if gun and char and char:FindFirstChild("HumanoidRootPart") then
@@ -704,7 +834,7 @@ for i, tName in ipairs(tabs) do
         local s1 = UI:CreateSection(page, "Info", UDim2.new(0, 530, 0, 110), UDim2.new(0, 5, 0, 5))
         local info = Instance.new("TextLabel")
         info.Size = UDim2.new(1, -6, 0, 70); info.BackgroundTransparency = 1; info.RichText = true
-        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2 v5.1</font> | Bigger menu\nПКМ по бинду = сбросить\nAnti-Aim теперь во вкладке сайдбара!"
+        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2 v6.3</font> | Full Update\nSilent Aim / KillAura / AutoFire / Player Picker"
         info.TextColor3 = Color3.fromRGB(180, 180, 180); info.Font = Enum.Font.Gotham
         info.TextSize = 12; info.TextXAlignment = Enum.TextXAlignment.Left
         info.TextYAlignment = Enum.TextYAlignment.Top; info.Parent = s1
@@ -738,20 +868,176 @@ aaLabel.Font = Enum.Font.GothamBold; aaLabel.TextSize = 14
 aaLabel.TextStrokeTransparency = 0; aaLabel.TextStrokeColor3 = Color3.new(0,0,0)
 aaLabel.Visible = false; aaLabel.Parent = aaHud
 
+-- ==========================================
+-- ===== TRUE NEVERLOSE-STYLE HUD ===========
+-- ==========================================
+local hudGui = Instance.new("ScreenGui")
+hudGui.Name = "MemeSense_Watermark"
+hudGui.ResetOnSpawn = false
+hudGui.IgnoreGuiInset = true
+hudGui.DisplayOrder = 999
+hudGui.Parent = CoreGui
+
+local hudFrame = Instance.new("Frame")
+hudFrame.Size = UDim2.new(0, 0, 0, 30)
+hudFrame.AutomaticSize = Enum.AutomaticSize.X
+hudFrame.Position = UDim2.new(0.5, -250, 0, 15)
+hudFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+hudFrame.BackgroundTransparency = 0.05
+hudFrame.BorderSizePixel = 0
+hudFrame.Active = true
+hudFrame.Parent = hudGui
+
+local hudCorner = Instance.new("UICorner")
+hudCorner.CornerRadius = UDim.new(0, 8)
+hudCorner.Parent = hudFrame
+
+local hudStroke = Instance.new("UIStroke")
+hudStroke.Color = Color3.fromRGB(45, 45, 55)
+hudStroke.Thickness = 1
+hudStroke.Parent = hudFrame
+
+local hudPadding = Instance.new("UIPadding")
+hudPadding.PaddingLeft = UDim.new(0, 12)
+hudPadding.PaddingRight = UDim.new(0, 12)
+hudPadding.PaddingTop = UDim.new(0, 4)
+hudPadding.PaddingBottom = UDim.new(0, 4)
+hudPadding.Parent = hudFrame
+
+local hudLayout = Instance.new("UIListLayout")
+hudLayout.FillDirection = Enum.FillDirection.Horizontal
+hudLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+hudLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+hudLayout.Padding = UDim.new(0, 18)
+hudLayout.SortOrder = Enum.SortOrder.LayoutOrder
+hudLayout.Parent = hudFrame
+
+-- Функция создания элемента HUD в стиле NL (иконка + текст)
+local function makeHudItem(order, iconColor)
+    local wrapper = Instance.new("Frame")
+    wrapper.Name = "Item" .. order
+    wrapper.BackgroundTransparency = 1
+    wrapper.Size = UDim2.new(0, 0, 1, 0)
+    wrapper.AutomaticSize = Enum.AutomaticSize.X
+    wrapper.LayoutOrder = order
+    wrapper.Parent = hudFrame
+
+    local wLay = Instance.new("UIListLayout")
+    wLay.FillDirection = Enum.FillDirection.Horizontal
+    wLay.VerticalAlignment = Enum.VerticalAlignment.Center
+    wLay.Padding = UDim.new(0, 6)
+    wLay.Parent = wrapper
+
+    -- Цветной квадратик-иконка (как у NL)
+    local iconBox = Instance.new("Frame")
+    iconBox.Size = UDim2.new(0, 4, 0, 14)
+    iconBox.BackgroundColor3 = iconColor
+    iconBox.BorderSizePixel = 0
+    iconBox.LayoutOrder = 1
+    iconBox.Parent = wrapper
+    local iCorner = Instance.new("UICorner")
+    iCorner.CornerRadius = UDim.new(1, 0)
+    iCorner.Parent = iconBox
+
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(0, 0, 1, 0)
+    lbl.AutomaticSize = Enum.AutomaticSize.X
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 13
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 225)
+    lbl.Text = ""
+    lbl.LayoutOrder = 2
+    lbl.Parent = wrapper
+
+    return lbl
+end
+
+-- Разделитель (как у NL)
+local function makeDivider(order)
+    local div = Instance.new("Frame")
+    div.Size = UDim2.new(0, 1, 0, 14)
+    div.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    div.BorderSizePixel = 0
+    div.LayoutOrder = order
+    div.Parent = hudFrame
+end
+
+local hudFps = makeHudItem(1, Color3.fromRGB(100, 200, 255))
+makeDivider(2)
+local hudPing = makeHudItem(3, Color3.fromRGB(180, 130, 255))
+makeDivider(4)
+
+-- Логотип MS по центру
+local logoWrap = Instance.new("Frame")
+logoWrap.BackgroundTransparency = 1
+logoWrap.Size = UDim2.new(0, 0, 1, 0)
+logoWrap.AutomaticSize = Enum.AutomaticSize.X
+logoWrap.LayoutOrder = 5
+logoWrap.Parent = hudFrame
+
+local logoLbl = Instance.new("TextLabel")
+logoLbl.BackgroundTransparency = 1
+logoLbl.Size = UDim2.new(0, 0, 1, 0)
+logoLbl.AutomaticSize = Enum.AutomaticSize.X
+logoLbl.Font = Enum.Font.GothamBlack
+logoLbl.TextSize = 15
+logoLbl.RichText = true
+logoLbl.Text = '<font color="rgb(255,255,255)">M</font><font color="rgb(235,50,75)">S</font>'
+logoLbl.Parent = logoWrap
+
+makeDivider(6)
+local hudTime = makeHudItem(7, Color3.fromRGB(255, 200, 100))
+makeDivider(8)
+local hudUser = makeHudItem(9, Color3.fromRGB(100, 255, 150))
+
+-- Drag
+local dragHud, startHud, posHud
+hudFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragHud = true; startHud = input.Position; posHud = hudFrame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragHud then
+        local delta = input.Position - startHud
+        hudFrame.Position = UDim2.new(posHud.X.Scale, posHud.X.Offset + delta.X, posHud.Y.Scale, posHud.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragHud = false end
+end)
+
+hudUser.Text = LocalPlayer.Name
+
+local frameCounter = 0
+local function fmtTime()
+    local d = os.date("*t")
+    return string.format("%02d:%02d", d.hour, d.min)
+end
+
+RunService.RenderStepped:Connect(function(dt)
+    if UNLOADED then hudGui.Enabled = false return end
+    hudGui.Enabled = Config.Watermark
+    frameCounter += 1
+    if frameCounter % 5 ~= 0 then return end
+    if not Config.Watermark then return end
+
+    local fps = math.floor(1/dt)
+    local ping = 0
+    pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000) end)
+
+    hudFps.Text = fps .. " FPS"
+    hudPing.Text = ping .. " MS"
+    hudTime.Text = fmtTime()
+end)
+
 -- ===== FOV CIRCLE =====
 local FOVCircle
 if Drawing then
     FOVCircle = Drawing.new("Circle")
     FOVCircle.Thickness = 1; FOVCircle.NumSides = 60; FOVCircle.Filled = false
     FOVCircle.Color = Color3.fromRGB(235, 50, 75); FOVCircle.Visible = false
-end
-
-local function GetRole(p)
-    if not p or not p.Character then return "Innocent" end
-    local bp = p:FindFirstChild("Backpack")
-    if (bp and bp:FindFirstChild("Knife")) or p.Character:FindFirstChild("Knife") then return "Murderer" end
-    if (bp and bp:FindFirstChild("Gun")) or p.Character:FindFirstChild("Gun") then return "Sheriff" end
-    return "Innocent"
 end
 
 local EspFolder = Instance.new("Folder")
@@ -777,7 +1063,8 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if key == Config.PanicBind then
         Config.AimEnabled=false; Config.TriggerBot=false; Config.KillAura=false
         Config.AutoShoot=false; Config.EspPlayers=false; Config.FlingMurderer=false
-        Config.NoClip=false; Config.AntiAimEnabled=false
+        Config.NoClip=false; Config.AntiAimEnabled=false; Config.SilentAim=false
+        Config.AutoFireSheriff=false
         refreshUI()
     end
     if key == Config.AntiAimBind and Config.AntiAimBind ~= "None" then Config.AntiAimEnabled = not Config.AntiAimEnabled; refreshUI() end
@@ -786,7 +1073,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if key == Config.AutoGrabBind and Config.AutoGrabBind ~= "None" then Config.AutoGrabGun = not Config.AutoGrabGun; refreshUI() end
     if key == Config.NoClipBind and Config.NoClipBind ~= "None" then Config.NoClip = not Config.NoClip; refreshUI() end
     if key == Config.FlingBind and Config.FlingBind ~= "None" then
-        local target = Players:FindFirstChild(Config.FlingTarget)
+        local target = Players:FindFirstChild(Config.SelectedPlayer)
         if target and target.Character then FlingPlayer(target.Character) end
     end
 end)
@@ -826,15 +1113,79 @@ task.spawn(function()
     end
 end)
 
+-- ===== AUTO FIRE SHERIFF (MAIN FUNCTION) =====
+local lastAutoFire = 0
 task.spawn(function()
     while not UNLOADED do
-        pcall(checkOtherTags)
-        pcall(function()
-            if Config.ShowOwnTag and LocalPlayer.Character then createTagGui(LocalPlayer.Character)
-            elseif not Config.ShowOwnTag and LocalPlayer.Character then removeTagGui(LocalPlayer.Character) end
-            giveTagMarker()
-        end)
-        task.wait(1)
+        task.wait(0.05)
+        if Config.AutoFireSheriff then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("Gun") then
+                local murderer = GetMurderer()
+                if murderer and murderer.Character then
+                    local mHead = murderer.Character:FindFirstChild("Head")
+                    local myHead = char:FindFirstChild("Head")
+                    if mHead and myHead then
+                        -- Проверка линии видимости
+                        local ray = Ray.new(myHead.Position, (mHead.Position - myHead.Position))
+                        local hit = Workspace:FindPartOnRayWithIgnoreList(ray, {char, LocalPlayer.Character})
+                        local visible = not hit or hit:IsDescendantOf(murderer.Character)
+                        if visible and tick() - lastAutoFire > 0.4 then
+                            -- Наводим и стреляем
+                            Camera.CFrame = CFrame.new(Camera.CFrame.Position, mHead.Position)
+                            task.wait(0.03)
+                            pcall(function()
+                                char.Gun:Activate()
+                            end)
+                            lastAutoFire = tick()
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ===== KILL AURA (MAIN FIX) =====
+task.spawn(function()
+    while not UNLOADED do
+        task.wait(0.1)
+        if Config.KillAura then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("Knife") then
+                local knife = char.Knife
+                local handle = knife:FindFirstChild("Handle")
+                if handle then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        for _, p in pairs(Players:GetPlayers()) do
+                            if p ~= LocalPlayer and p.Character then
+                                local ehrp = p.Character:FindFirstChild("HumanoidRootPart")
+                                local ehum = p.Character:FindFirstChildOfClass("Humanoid")
+                                if ehrp and ehum and ehum.Health > 0 then
+                                    local dist = (hrp.Position - ehrp.Position).Magnitude
+                                    if dist <= Config.AuraRadius then
+                                        pcall(function()
+                                            -- Метод 1: firetouchinterest на все части
+                                            if firetouchinterest then
+                                                for _, part in pairs(p.Character:GetChildren()) do
+                                                    if part:IsA("BasePart") then
+                                                        firetouchinterest(handle, part, 0)
+                                                        firetouchinterest(handle, part, 1)
+                                                    end
+                                                end
+                                            end
+                                            -- Метод 2: Активация ножа
+                                            knife:Activate()
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 end)
 
@@ -918,6 +1269,7 @@ RunService.Heartbeat:Connect(function(dt)
     else aaLabel.Visible = false end
 end)
 
+-- ===== MAIN LOOP =====
 RunService.RenderStepped:Connect(function()
     if UNLOADED then return end
     EspFolder:ClearAllChildren()
@@ -1016,23 +1368,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    if Config.KillAura and char:FindFirstChild("Knife") then
-        local knife = char.Knife
-        if knife:FindFirstChild("Handle") then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character then
-                    local thrp = p.Character:FindFirstChild("HumanoidRootPart")
-                    if thrp and (hrp.Position - thrp.Position).Magnitude <= Config.AuraRadius then
-                        pcall(function()
-                            firetouchinterest(knife.Handle, thrp, 0)
-                            firetouchinterest(knife.Handle, thrp, 1)
-                        end)
-                    end
-                end
-            end
-        end
-    end
-
     if Config.AutoShoot and char:FindFirstChild("Gun") then
         for _, p in pairs(Players:GetPlayers()) do
             if GetRole(p) == "Murderer" and p.Character then
@@ -1084,4 +1419,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ MemeSense v5.1 LOADED | Bigger menu | Anti-Aim TAB visible!")
+print("✅ MemeSense v6.3 | KillAura + SilentAim + AutoFire + PlayerPicker")
