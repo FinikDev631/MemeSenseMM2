@@ -1,6 +1,6 @@
 -- ==========================================
--- MEMESENSE MM2 | FULL EDITION v6.3
--- Fixed HUD | KillAura | SilentAim | AutoFire | PlayerPicker
+-- MEMESENSE MM2 | FULL EDITION v6.4
+-- Fixed AutoFire + KillAura | Removed broken SilentAim
 -- ==========================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -55,7 +55,6 @@ local Config = {
     AutoShoot = false, AutoShootBind = "G",
     AutoFireSheriff = false,
     AutoGrabGun = false, AutoGrabBind = "H",
-    SilentAim = false, SilentAimFOV = 200,
     SelectedPlayer = "", FlingMurderer = false, FlingBind = "V",
 
     NoRecoil = false, NoSpread = false, InstantReload = false,
@@ -185,45 +184,6 @@ task.spawn(function()
         task.wait(2)
     end
 end)
-
--- ===== SILENT AIM (Metamethod Hook) =====
-local mt = getrawmetatable and getrawmetatable(game)
-local oldNamecall
-if mt and setreadonly then
-    setreadonly(mt, false)
-    oldNamecall = mt.__namecall
-    mt.__namecall = newcclosure and newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        if not UNLOADED and Config.SilentAim and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "Raycast") then
-            local closest, minDist = nil, Config.SilentAimFOV
-            local mousePos = UserInputService:GetMouseLocation()
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") then
-                    if GetRole(p) == "Murderer" or not Config.TriggerOnlyMurderer then
-                        local hpos, onScreen = Camera:WorldToViewportPoint(p.Character.Head.Position)
-                        if onScreen then
-                            local d = (Vector2.new(hpos.X, hpos.Y) - mousePos).Magnitude
-                            if d < minDist then closest = p.Character.Head; minDist = d end
-                        end
-                    end
-                end
-            end
-            if closest then
-                if method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
-                    local origin = Camera.CFrame.Position
-                    local newRay = Ray.new(origin, (closest.Position - origin).Unit * 1000)
-                    args[1] = newRay
-                elseif method == "Raycast" then
-                    args[2] = (closest.Position - args[1]).Unit * 1000
-                end
-                return oldNamecall(self, table.unpack(args))
-            end
-        end
-        return oldNamecall(self, ...)
-    end) or function(self, ...) return oldNamecall(self, ...) end
-    setreadonly(mt, true)
-end
 
 -- ===== FLING =====
 local function FlingPlayer(targetChar)
@@ -491,7 +451,6 @@ function UI:CreateDropdown(parent, text, options, varName)
     allDropdowns[varName] = {btn = btn, opts = options}
 end
 
--- ===== PLAYER PICKER (Real Dropdown) =====
 function UI:CreatePlayerDropdown(parent, text, varName)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -6, 0, 22); frame.BackgroundTransparency = 1; frame.Parent = parent
@@ -664,23 +623,19 @@ for i, tName in ipairs(tabs) do
         UI:CreateCheckbox(s3, "Instant Reload", "InstantReload")
 
     elseif tName == "Ragebot" then
-        local s1 = UI:CreateSection(page, "Silent Aim", UDim2.new(0, 260, 0, 130), UDim2.new(0, 5, 0, 5))
-        UI:CreateCheckbox(s1, "Silent Aim (Metamethod)", "SilentAim")
-        UI:CreateSlider(s1, "Silent FOV", 50, 500, "SilentAimFOV")
+        local s1 = UI:CreateSection(page, "Auto Fire (Sheriff)", UDim2.new(0, 260, 0, 150), UDim2.new(0, 5, 0, 5))
+        UI:CreateCheckbox(s1, "Auto Fire Murderer", "AutoFireSheriff")
+        UI:CreateCheckbox(s1, "Auto Shoot (Legacy)", "AutoShoot")
+        UI:CreateBindButton(s1, "AutoShoot Key", "AutoShootBind")
 
-        local s2 = UI:CreateSection(page, "Kill Aura (Murderer)", UDim2.new(0, 260, 0, 130), UDim2.new(0, 275, 0, 5))
+        local s2 = UI:CreateSection(page, "Kill Aura (Murderer)", UDim2.new(0, 260, 0, 150), UDim2.new(0, 275, 0, 5))
         UI:CreateCheckbox(s2, "Enable Kill Aura", "KillAura")
         UI:CreateBindButton(s2, "KillAura Key", "KillAuraBind")
         UI:CreateSlider(s2, "Aura Radius", 5, 50, "AuraRadius")
 
-        local s3 = UI:CreateSection(page, "Auto Fire (Sheriff)", UDim2.new(0, 260, 0, 130), UDim2.new(0, 5, 0, 140))
-        UI:CreateCheckbox(s3, "Auto Fire Murderer", "AutoFireSheriff")
-        UI:CreateCheckbox(s3, "Auto Shoot (Camera Snap)", "AutoShoot")
-        UI:CreateBindButton(s3, "AutoShoot Key", "AutoShootBind")
-
-        local s4 = UI:CreateSection(page, "Auto Pickup", UDim2.new(0, 260, 0, 130), UDim2.new(0, 275, 0, 140))
-        UI:CreateCheckbox(s4, "Auto Grab Dropped Gun", "AutoGrabGun")
-        UI:CreateBindButton(s4, "AutoGrab Key", "AutoGrabBind")
+        local s3 = UI:CreateSection(page, "Auto Pickup", UDim2.new(0, 260, 0, 110), UDim2.new(0, 5, 0, 160))
+        UI:CreateCheckbox(s3, "Auto Grab Dropped Gun", "AutoGrabGun")
+        UI:CreateBindButton(s3, "AutoGrab Key", "AutoGrabBind")
 
     elseif tName == "Anti-Aim" then
         local hdr = Instance.new("TextLabel")
@@ -834,7 +789,7 @@ for i, tName in ipairs(tabs) do
         local s1 = UI:CreateSection(page, "Info", UDim2.new(0, 530, 0, 110), UDim2.new(0, 5, 0, 5))
         local info = Instance.new("TextLabel")
         info.Size = UDim2.new(1, -6, 0, 70); info.BackgroundTransparency = 1; info.RichText = true
-        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2 v6.3</font> | Full Update\nSilent Aim / KillAura / AutoFire / Player Picker"
+        info.Text = "<font color='rgb(235,50,75)'>MemeSense MM2 v6.4</font> | Fixed AutoFire + KillAura\nSilent Aim removed (broke camera)\nPlayerPicker + Real MM2 Combat"
         info.TextColor3 = Color3.fromRGB(180, 180, 180); info.Font = Enum.Font.Gotham
         info.TextSize = 12; info.TextXAlignment = Enum.TextXAlignment.Left
         info.TextYAlignment = Enum.TextYAlignment.Top; info.Parent = s1
@@ -868,9 +823,7 @@ aaLabel.Font = Enum.Font.GothamBold; aaLabel.TextSize = 14
 aaLabel.TextStrokeTransparency = 0; aaLabel.TextStrokeColor3 = Color3.new(0,0,0)
 aaLabel.Visible = false; aaLabel.Parent = aaHud
 
--- ==========================================
--- ===== TRUE NEVERLOSE-STYLE HUD ===========
--- ==========================================
+-- ===== NL STYLE HUD =====
 local hudGui = Instance.new("ScreenGui")
 hudGui.Name = "MemeSense_Watermark"
 hudGui.ResetOnSpawn = false
@@ -912,7 +865,6 @@ hudLayout.Padding = UDim.new(0, 18)
 hudLayout.SortOrder = Enum.SortOrder.LayoutOrder
 hudLayout.Parent = hudFrame
 
--- Функция создания элемента HUD в стиле NL (иконка + текст)
 local function makeHudItem(order, iconColor)
     local wrapper = Instance.new("Frame")
     wrapper.Name = "Item" .. order
@@ -928,7 +880,6 @@ local function makeHudItem(order, iconColor)
     wLay.Padding = UDim.new(0, 6)
     wLay.Parent = wrapper
 
-    -- Цветной квадратик-иконка (как у NL)
     local iconBox = Instance.new("Frame")
     iconBox.Size = UDim2.new(0, 4, 0, 14)
     iconBox.BackgroundColor3 = iconColor
@@ -953,7 +904,6 @@ local function makeHudItem(order, iconColor)
     return lbl
 end
 
--- Разделитель (как у NL)
 local function makeDivider(order)
     local div = Instance.new("Frame")
     div.Size = UDim2.new(0, 1, 0, 14)
@@ -968,7 +918,6 @@ makeDivider(2)
 local hudPing = makeHudItem(3, Color3.fromRGB(180, 130, 255))
 makeDivider(4)
 
--- Логотип MS по центру
 local logoWrap = Instance.new("Frame")
 logoWrap.BackgroundTransparency = 1
 logoWrap.Size = UDim2.new(0, 0, 1, 0)
@@ -991,7 +940,6 @@ local hudTime = makeHudItem(7, Color3.fromRGB(255, 200, 100))
 makeDivider(8)
 local hudUser = makeHudItem(9, Color3.fromRGB(100, 255, 150))
 
--- Drag
 local dragHud, startHud, posHud
 hudFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -1063,8 +1011,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if key == Config.PanicBind then
         Config.AimEnabled=false; Config.TriggerBot=false; Config.KillAura=false
         Config.AutoShoot=false; Config.EspPlayers=false; Config.FlingMurderer=false
-        Config.NoClip=false; Config.AntiAimEnabled=false; Config.SilentAim=false
-        Config.AutoFireSheriff=false
+        Config.NoClip=false; Config.AntiAimEnabled=false; Config.AutoFireSheriff=false
         refreshUI()
     end
     if key == Config.AntiAimBind and Config.AntiAimBind ~= "None" then Config.AntiAimEnabled = not Config.AntiAimEnabled; refreshUI() end
@@ -1113,31 +1060,72 @@ task.spawn(function()
     end
 end)
 
--- ===== AUTO FIRE SHERIFF (MAIN FUNCTION) =====
+-- ===== AUTO FIRE SHERIFF =====
+local function findGunTool()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    for _, tool in pairs(char:GetChildren()) do
+        if tool:IsA("Tool") and (tool.Name == "Gun" or tool.Name:lower():find("gun") or tool.Name:lower():find("revolver")) then
+            return tool
+        end
+    end
+    return nil
+end
+
+local function equipGun()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if not (char and hum and bp) then return nil end
+    local held = findGunTool()
+    if held then return held end
+    for _, tool in pairs(bp:GetChildren()) do
+        if tool:IsA("Tool") and (tool.Name == "Gun" or tool.Name:lower():find("gun") or tool.Name:lower():find("revolver")) then
+            hum:EquipTool(tool)
+            task.wait(0.05)
+            return tool
+        end
+    end
+    return nil
+end
+
+local function hasVisibleLineOfSight(fromPos, toPart, char)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {char, Camera}
+    local dir = (toPart.Position - fromPos)
+    local result = Workspace:Raycast(fromPos, dir, params)
+    if not result then return true end
+    if result.Instance:IsDescendantOf(toPart.Parent) then return true end
+    return false
+end
+
 local lastAutoFire = 0
 task.spawn(function()
     while not UNLOADED do
-        task.wait(0.05)
+        task.wait(0.03)
         if Config.AutoFireSheriff then
             local char = LocalPlayer.Character
-            if char and char:FindFirstChild("Gun") then
-                local murderer = GetMurderer()
-                if murderer and murderer.Character then
-                    local mHead = murderer.Character:FindFirstChild("Head")
-                    local myHead = char:FindFirstChild("Head")
-                    if mHead and myHead then
-                        -- Проверка линии видимости
-                        local ray = Ray.new(myHead.Position, (mHead.Position - myHead.Position))
-                        local hit = Workspace:FindPartOnRayWithIgnoreList(ray, {char, LocalPlayer.Character})
-                        local visible = not hit or hit:IsDescendantOf(murderer.Character)
-                        if visible and tick() - lastAutoFire > 0.4 then
-                            -- Наводим и стреляем
-                            Camera.CFrame = CFrame.new(Camera.CFrame.Position, mHead.Position)
-                            task.wait(0.03)
-                            pcall(function()
-                                char.Gun:Activate()
-                            end)
-                            lastAutoFire = tick()
+            if char and char:FindFirstChildOfClass("Humanoid") and char:FindFirstChildOfClass("Humanoid").Health > 0 then
+                local gun = equipGun()
+                if gun then
+                    local murderer = GetMurderer()
+                    if murderer and murderer.Character then
+                        local mHead = murderer.Character:FindFirstChild("Head")
+                        local myHrp = char:FindFirstChild("HumanoidRootPart")
+                        if mHead and myHrp then
+                            local dist = (myHrp.Position - mHead.Position).Magnitude
+                            if dist < 300 and hasVisibleLineOfSight(myHrp.Position + Vector3.new(0,1,0), mHead, char) then
+                                if tick() - lastAutoFire > 0.5 then
+                                    local camPos = Camera.CFrame.Position
+                                    Camera.CFrame = CFrame.new(camPos, mHead.Position)
+                                    task.wait()
+                                    pcall(function()
+                                        gun:Activate()
+                                    end)
+                                    lastAutoFire = tick()
+                                end
+                            end
                         end
                     end
                 end
@@ -1146,18 +1134,29 @@ task.spawn(function()
     end
 end)
 
--- ===== KILL AURA (MAIN FIX) =====
+-- ===== KILL AURA =====
 task.spawn(function()
     while not UNLOADED do
-        task.wait(0.1)
+        task.wait(0.05)
         if Config.KillAura then
             local char = LocalPlayer.Character
-            if char and char:FindFirstChild("Knife") then
-                local knife = char.Knife
-                local handle = knife:FindFirstChild("Handle")
-                if handle then
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if char and hum and hum.Health > 0 then
+                local knife = char:FindFirstChild("Knife")
+                if not knife then
+                    local bp = LocalPlayer:FindFirstChild("Backpack")
+                    local knifeBp = bp and bp:FindFirstChild("Knife")
+                    if knifeBp then
+                        pcall(function() hum:EquipTool(knifeBp) end)
+                        task.wait(0.05)
+                        knife = char:FindFirstChild("Knife")
+                    end
+                end
+
+                if knife then
+                    local handle = knife:FindFirstChild("Handle")
                     local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
+                    if handle and hrp then
                         for _, p in pairs(Players:GetPlayers()) do
                             if p ~= LocalPlayer and p.Character then
                                 local ehrp = p.Character:FindFirstChild("HumanoidRootPart")
@@ -1166,16 +1165,20 @@ task.spawn(function()
                                     local dist = (hrp.Position - ehrp.Position).Magnitude
                                     if dist <= Config.AuraRadius then
                                         pcall(function()
-                                            -- Метод 1: firetouchinterest на все части
                                             if firetouchinterest then
-                                                for _, part in pairs(p.Character:GetChildren()) do
-                                                    if part:IsA("BasePart") then
-                                                        firetouchinterest(handle, part, 0)
-                                                        firetouchinterest(handle, part, 1)
-                                                    end
+                                                firetouchinterest(handle, ehrp, 0)
+                                                firetouchinterest(handle, ehrp, 1)
+                                                local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+                                                if torso then
+                                                    firetouchinterest(handle, torso, 0)
+                                                    firetouchinterest(handle, torso, 1)
+                                                end
+                                                local head = p.Character:FindFirstChild("Head")
+                                                if head then
+                                                    firetouchinterest(handle, head, 0)
+                                                    firetouchinterest(handle, head, 1)
                                                 end
                                             end
-                                            -- Метод 2: Активация ножа
                                             knife:Activate()
                                         end)
                                     end
@@ -1419,4 +1422,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ MemeSense v6.3 | KillAura + SilentAim + AutoFire + PlayerPicker")
+print("✅ MemeSense v6.4 LOADED | AutoFire + KillAura Fixed | SilentAim removed")
